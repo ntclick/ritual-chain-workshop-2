@@ -2,6 +2,14 @@
   "name": "hardhat",
   "version": "1.0.0",
   "type": "module",
+  "scripts": {
+    "build": "hardhat build",
+    "test": "hardhat test",
+    "test:solidity": "hardhat test solidity",
+    "test:e2e": "hardhat test nodejs",
+    "coverage": "hardhat test --coverage",
+    "typecheck": "hardhat build && tsc --noEmit"
+  },
   "devDependencies": {
     "@nomicfoundation/hardhat-ignition": "^3.1.8",
     "@nomicfoundation/hardhat-toolbox-viem": "^5.0.7",
