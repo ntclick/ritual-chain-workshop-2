@@ -1,6 +1,17 @@
 import hardhatToolboxViemPlugin from "@nomicfoundation/hardhat-toolbox-viem";
 import { configVariable, defineConfig } from "hardhat/config";
 
+// Hardhat 3 resolves configVariable() from process.env but does not read .env itself,
+// and this project has no dotenv dependency — so without this the documented
+// "copy .env.example to .env" workflow silently produces an unset key. Node 22's
+// built-in loader keeps that a zero-dependency fix. Real environment variables win,
+// which is what CI wants.
+try {
+  process.loadEnvFile(new URL(".env", import.meta.url));
+} catch {
+  // No .env — fine. Only the `ritual` network needs one, and it fails loudly there.
+}
+
 export default defineConfig({
   plugins: [hardhatToolboxViemPlugin],
   solidity: {
@@ -36,8 +47,8 @@ export default defineConfig({
       type: "http",
       chainType: "l1",
       chainId: 1979,
-      url: "https://rpc.ritualfoundation.org",
-      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+      url: process.env.RITUAL_RPC_URL ?? "https://rpc.ritualfoundation.org",
+      accounts: [configVariable("RITUAL_PRIVATE_KEY")],
     },
   },
 });
