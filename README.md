@@ -98,6 +98,29 @@ pnpm test
 
 ---
 
+## The frontend
+
+`web/` is a Next.js app that talks to the contract directly with viem — market list with
+live pool splits and pari-mutuel odds, betting, claiming, market creation, and the
+resolution diagnostics (attempt count, observed value, why a market went `Invalid`). It
+also serves the demo oracle at `/api/oracle/eth`. See [web/README.md](web/README.md).
+
+The whole thing runs without a testnet:
+
+```bash
+cd hardhat
+npx hardhat node                                              # terminal 1
+npx hardhat run scripts/local-demo.ts --network localhost     # terminal 2 — prints the address
+cd ../web && pnpm dev                                         # terminal 3
+```
+
+`local-demo.ts` puts the mock system contracts at the canonical Ritual addresses, so the
+unmodified `RitualPredict` runs on a local node. `local-bet.ts` and `local-resolve.ts`
+then drive a market through betting, resolution, and the retry-to-`Invalid` path
+(`STATUS=503`) while the UI is open.
+
+---
+
 ## Verifying it without the chain
 
 The testnet was unreachable while this fork was built, so the whole contract is
