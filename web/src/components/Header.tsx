@@ -41,17 +41,13 @@ export function Header({
         </div>
 
         <div className="row">
+          {/* Drives what the app reads, not just what the wallet is asked to do. */}
           <select
-            aria-label="Network"
-            value={wallet.chainId ?? ""}
+            aria-label="Network to view"
+            value={wallet.chain.id}
             onChange={(event) => void wallet.requestChain(Number(event.target.value))}
             style={{ width: "auto" }}
           >
-            {!wallet.isSupportedChain && (
-              <option value="">
-                {wallet.chainId ? `Unsupported (${wallet.chainId})` : "No network"}
-              </option>
-            )}
             {SUPPORTED_CHAINS.map((chain) => (
               <option key={chain.id} value={chain.id}>
                 {chain.name}
@@ -113,21 +109,13 @@ export function Header({
       {wallet.account && !wallet.isSupportedChain && (
         <div className="banner banner-warn between">
           <span>
-            Your wallet is on an unsupported network
-            {wallet.chainId ? ` (chain ${wallet.chainId})` : ""}. Betting and claiming need
-            one of these.
+            Viewing <strong>{wallet.chain.name}</strong>, but the wallet is on
+            {wallet.walletChainId ? ` chain ${wallet.walletChainId}` : " another network"}.
+            Browsing works either way — betting and claiming need the wallet to match.
           </span>
-          <span className="row">
-            {SUPPORTED_CHAINS.map((chain) => (
-              <button
-                key={chain.id}
-                className="btn btn-sm"
-                onClick={() => void wallet.requestChain(chain.id)}
-              >
-                Switch to {chain.name}
-              </button>
-            ))}
-          </span>
+          <button className="btn btn-sm" onClick={() => void wallet.requestChain(wallet.chain.id)}>
+            Switch wallet to {wallet.chain.name}
+          </button>
         </div>
       )}
 

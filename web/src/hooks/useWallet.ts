@@ -11,28 +11,31 @@ import {
   writeClient,
 } from "@/lib/wallet";
 
-export type WalletState = {
-  account: `0x${string}` | undefined;
-  chainId: number | undefined;
-  isSupportedChain: boolean;
-  hasWallet: boolean;
-  connecting: boolean;
-  error: string | undefined;
-};
+const CHAIN_KEY = "ritual-predict:chain";
 
 /**
  * Injected-wallet connection, deliberately without a wallet library.
  *
- * Reads never depend on it: `publicClient` follows the wallet's chain when that chain
- * is one we support and falls back to the default otherwise, so the market list works
- * before anyone connects.
+ * The chain the app *reads* from is chosen here and is independent of whatever the
+ * wallet happens to be pointed at. Tying reads to the wallet looks tidy until the
+ * wallet sits on a network whose RPC is down — Ritual's testnet, say — and the whole
+ * page goes blank even though the contract the user configured lives on a local node
+ * that is running perfectly well. Selecting a chain still *asks* the wallet to follow,
+ * because writes must go to the same place, but a wallet that declines no longer takes
+ * the market list down with it.
  */
 export function useWallet() {
   const [account, setAccount] = useState<`0x${string}` | undefined>();
-  const [chainId, setChainId] = useState<number | undefined>();
+  const [walletChainId, setWalletChainId] = useState<number | undefined>();
+  const [readChainId, setReadChainId] = useState<number>(DEFAULT_CHAIN.id);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [hasWallet, setHasWallet] = useState(false);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(CHAIN_KEY);
+    if (stored && chainById(Number(stored))) setReadChainId(Number(stored));
+  }, []);
 
   useEffect(() => {
     const provider = getProvider();
@@ -45,7 +48,7 @@ export function useWallet() {
         const accounts = (await provider.request({ method: "eth_accounts" })) as `0x${string}`[];
         if (accounts.length > 0) setAccount(accounts[0]);
         const id = (await provider.request({ method: "eth_chainId" })) as string;
-        setChainId(Number.parseInt(id, 16));
+        setWalletChainId(Number.parseInt(id, 16));
       } catch {
         // A wallet that refuses to answer is treated as "not connected".
       }
@@ -56,7 +59,7 @@ export function useWallet() {
       setAccount(accounts?.[0]);
     };
     const onChainChanged = (...args: never[]) => {
-      setChainId(Number.parseInt(args[0] as unknown as string, 16));
+      setWalletChainId(Number.parseInt(args[0] as unknown as string, 16));
     };
 
     provider.on?.("accountsChanged", onAccountsChanged);
@@ -82,7 +85,7 @@ export function useWallet() {
       })) as `0x${string}`[];
       setAccount(accounts[0]);
       const id = (await provider.request({ method: "eth_chainId" })) as string;
-      setChainId(Number.parseInt(id, 16));
+      setWalletChainId(Number.parseInt(id, 16));
     } catch (cause) {
       setError((cause as Error).message ?? "Could not connect.");
     } finally {
@@ -90,31 +93,48 @@ export function useWallet() {
     }
   }, []);
 
+  /** Point the app at a chain, and ask the wallet to come along if there is one. */
   const requestChain = useCallback(async (id: number) => {
+    if (!chainById(id)) return;
     setError(undefined);
+    setReadChainId(id);
+    window.localStorage.setItem(CHAIN_KEY, String(id));
+
+    if (!getProvider()) return;
     try {
       await switchChain(id);
     } catch (cause) {
-      setError((cause as Error).message ?? "Could not switch chain.");
+      // Reads already moved; only writes need the wallet to agree.
+      setError(
+        `Viewing ${chainById(id)?.name}, but the wallet did not switch: ` +
+          `${(cause as Error).message ?? "unknown error"}`,
+      );
     }
   }, []);
 
-  const chain = chainById(chainId) ?? DEFAULT_CHAIN;
-  const isSupportedChain = chainById(chainId) !== undefined;
+  const chain = chainById(readChainId) ?? DEFAULT_CHAIN;
+
+  /** True when the wallet can sign for the chain being viewed. */
+  const walletOnReadChain = walletChainId === chain.id;
 
   const publicClient = useMemo(() => readClient(chain), [chain]);
 
   const getWalletClient = useCallback(() => {
     if (!account) throw new Error("Connect a wallet first.");
-    if (!isSupportedChain) throw new Error("Switch to a supported network first.");
+    if (!walletOnReadChain) {
+      throw new Error(`Switch the wallet to ${chain.name} first.`);
+    }
     return writeClient(chain, account);
-  }, [account, chain, isSupportedChain]);
+  }, [account, chain, walletOnReadChain]);
 
   return {
     account,
-    chainId,
+    /** The chain the app is reading from. */
     chain,
-    isSupportedChain,
+    chainId: chain.id,
+    /** Whatever the wallet is actually on, which may differ. */
+    walletChainId,
+    isSupportedChain: walletOnReadChain,
     hasWallet,
     connecting,
     error,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isAddress } from "viem";
 
 import type { Market } from "@/lib/market";
@@ -63,12 +63,27 @@ export function usePredict(
   const [error, setError] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
 
+  // A slow chain must not let polls pile up on top of each other.
+  const inFlight = useRef(false);
+  // Which (contract, chain) the newest request belongs to. A read started before the
+  // user switched networks can still resolve afterwards, and without this it would
+  // write another chain's markets into the view it no longer belongs to.
+  const requestKey = useRef("");
+
   const refresh = useCallback(async () => {
     if (!address) {
       setData(undefined);
       setLoading(false);
       return;
     }
+    // Claim the key *before* bailing out on an in-flight read. Skipping that step lets
+    // a read still running against the previous chain finish, find its own key intact,
+    // and publish that chain's markets into a view that has already moved on.
+    const key = `${address}@${chain.id}`;
+    requestKey.current = key;
+
+    if (inFlight.current) return;
+    inFlight.current = true;
 
     try {
       const contract = { address, abi: predictAbi } as const;
@@ -81,6 +96,7 @@ export function usePredict(
           publicClient.readContract({ ...contract, functionName: "MAX_ATTEMPTS" }),
         ]);
 
+      if (requestKey.current !== key) return; // superseded by a network switch
       setData({
         markets: markets as unknown as Market[],
         currentBlock,
@@ -90,21 +106,23 @@ export function usePredict(
       });
       setError(undefined);
     } catch (cause) {
-      // Name the chain. Reads follow the wallet's network, so the usual cause is a
-      // wallet sitting on Ritual Chain — whose public RPC is currently down — while the
-      // contract is actually deployed on the local node, and the old message gave no
-      // hint which of the two to go and change.
+      if (requestKey.current !== key) return;
+      // Name the chain being read. The usual cause is viewing Ritual Chain — whose
+      // public RPC is currently down — while the contract lives on the local node, and
+      // an unnamed "network unreachable" gives no hint which of the two to change.
       setError(
         `Could not read ${address} on ${chain.name}. Either the contract is not ` +
           `deployed on that network, or its RPC is unreachable. Check the network selector above.`,
       );
       void cause;
     } finally {
+      inFlight.current = false;
       setLoading(false);
     }
   }, [address, publicClient, chain]);
 
   useEffect(() => {
+    setData(undefined);
     setLoading(true);
     void refresh();
     const timer = setInterval(() => void refresh(), intervalMs);

@@ -1,6 +1,5 @@
 "use client";
 
-import { SUPPORTED_CHAINS } from "@/lib/chains";
 import type { useWallet } from "@/hooks/useWallet";
 
 /**
@@ -19,19 +18,17 @@ export function NetworkGate({ wallet }: { wallet: ReturnType<typeof useWallet> }
   return (
     <div className="banner banner-warn stack" style={{ gap: "0.5rem" }}>
       <span>
-        Your wallet is on an unsupported network
-        {wallet.chainId ? ` (chain ${wallet.chainId})` : ""}, so this action would fail.
+        This would be signed on
+        {wallet.walletChainId ? ` chain ${wallet.walletChainId}` : " another network"}, but
+        you are viewing <strong>{wallet.chain.name}</strong>.
       </span>
       <div className="row">
-        {SUPPORTED_CHAINS.map((chain) => (
-          <button
-            key={chain.id}
-            className="btn btn-sm"
-            onClick={() => void wallet.requestChain(chain.id)}
-          >
-            Switch to {chain.name}
-          </button>
-        ))}
+        <button
+          className="btn btn-sm"
+          onClick={() => void wallet.requestChain(wallet.chain.id)}
+        >
+          Switch wallet to {wallet.chain.name}
+        </button>
       </div>
     </div>
   );

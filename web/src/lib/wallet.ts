@@ -26,7 +26,14 @@ export function getProvider(): Eip1193Provider | undefined {
  * wallet, so the market list keeps refreshing even while no wallet is connected.
  */
 export function readClient(chain: Chain) {
-  return createPublicClient({ chain, transport: http() });
+  // An unreachable RPC does not necessarily refuse the connection — Ritual's testnet
+  // currently accepts it and then never answers. Without an explicit timeout the read
+  // promise simply never settles, so the UI shows neither data nor an error and quietly
+  // keeps displaying whatever it last read from a different chain. Fail fast instead.
+  return createPublicClient({
+    chain,
+    transport: http(undefined, { timeout: 8_000, retryCount: 1, retryDelay: 500 }),
+  });
 }
 
 export function writeClient(chain: Chain, account: `0x${string}`) {
