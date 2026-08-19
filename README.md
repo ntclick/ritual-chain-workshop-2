@@ -155,9 +155,18 @@ cd ../web && pnpm dev                                         # terminal 3
 ```
 
 `local-demo.ts` puts the mock system contracts at the canonical Ritual addresses, so the
-unmodified `RitualPredict` runs on a local node. `local-bet.ts` and `local-resolve.ts`
-then drive a market through betting, resolution, and the retry-to-`Invalid` path
-(`STATUS=503`) while the UI is open.
+unmodified `RitualPredict` runs on a local node. It also turns on interval mining at
+`blockTimeMs`: a local node otherwise mines only when a transaction arrives, so the chain
+would sit at one height, `closeBlock` would never pass, and a market would stay `Open`
+however long you waited. With it, betting closes on its own and the countdowns in the UI
+track real block progress.
+
+Resolution is the half that still needs a hand here — a local node has no Scheduler, so
+nothing wakes the contract. `local-bet.ts`, `local-resolve.ts` and `local-claim.ts` drive
+a market through betting, settlement and payout, and `STATUS=503` on the resolve step
+walks the retry-to-`Invalid` path instead. Every field of the market is overridable
+(`QUESTION`, `JSON_PATH`, `TARGET`, `COMPARATOR`, `OBSERVED`), so you can pose a real
+question against a real target without editing the script.
 
 ---
 
