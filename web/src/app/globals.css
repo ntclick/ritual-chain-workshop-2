@@ -477,6 +477,10 @@ select:focus {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(23rem, 1fr));
   gap: 1rem;
+  /* Cards take their natural height. Stretching them to match the tallest in the row
+     leaves a settled market — which has no betting controls — padded out with a void
+     between its details and its footer. */
+  align-items: start;
 }
 
 .market {
@@ -572,7 +576,6 @@ select:focus {
   font-family: var(--mono);
   border-top: 1px solid var(--line);
   padding-top: 0.6rem;
-  margin-top: auto;
 }
 
 /* Collapsible detail so the card front stays clean, Polymarket-style. */
