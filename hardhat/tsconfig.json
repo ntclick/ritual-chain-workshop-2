@@ -4,8 +4,12 @@
     "module": "node20",
     "target": "es2023",
     "skipLibCheck": true,
-    "outDir": "dist",
     "types": ["node"],
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    // Hardhat 3 runs TypeScript directly and the scripts import each other as
+    // "./ritual.ts", which `tsc` rejects unless this is on. It requires noEmit,
+    // which is correct here: nothing ever compiles this project to JavaScript.
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   }
 }
