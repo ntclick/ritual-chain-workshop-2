@@ -13,9 +13,11 @@
  */
 import { network } from "hardhat";
 import { MARKET_STATE, OUTCOME } from "./market-presets.ts";
+import { readOracle } from "./oracle-read.ts";
 
 const SCHEDULER = "0x56e776BAE2DD60664b69Bd5F865F1180ffB7D58B";
 const HTTP = "0x0000000000000000000000000000000000000801";
+const JQ = "0x0000000000000000000000000000000000000803";
 
 const address = process.env.PREDICT_ADDRESS;
 if (!address) throw new Error("Set PREDICT_ADDRESS to the deployed RitualPredict address.");
@@ -34,6 +36,24 @@ const market = await predict.read.getMarket([marketId]);
 console.log(`Market #${marketId}: ${market.question}`);
 console.log(`  state now      ${MARKET_STATE[market.state]}`);
 console.log(`  resolves at    block ${market.resolveBlock}`);
+
+// Read the market's real oracle and load the answer into the doubles, so a local
+// resolution settles against the world rather than against a number someone typed.
+// OBSERVED= skips this and forces a value; STATUS= forces a failure instead.
+if (!process.env.STATUS && !process.env.OBSERVED) {
+  const read = await readOracle(market.oracleUrl, market.jsonPath);
+  if (read.ok) {
+    const http = await viem.getContractAt("MockHttpPrecompile", HTTP);
+    const jq = await viem.getContractAt("MockJqPrecompile", JQ);
+    const body = `0x${Buffer.from(JSON.stringify(read.raw)).toString("hex")}` as const;
+    await http.write.setHttpResponse([200, body, ""]);
+    await jq.write.setValue([read.value]);
+    console.log(`  oracle read live:  ${market.jsonPath} -> ${read.value}`);
+  } else {
+    console.log(`  ! oracle read failed: ${read.reason}`);
+    console.log("    resolving against whatever the doubles already hold");
+  }
+}
 
 // Optionally make the oracle fail, to watch the retry path rather than the happy one.
 if (process.env.STATUS && process.env.STATUS !== "200") {

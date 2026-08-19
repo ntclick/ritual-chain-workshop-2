@@ -1411,3 +1411,17 @@ html {
 }
 
 
+
+/* A settled market states its outcome rather than counting toward one. */
+.settled-mark {
+  color: var(--yes);
+  font-family: var(--mono);
+  font-size: 0.86em;
+}
+
+/* Past its resolve block with no callback yet — the state expireStuck exists for. */
+.awaiting-mark {
+  color: var(--amber);
+  font-family: var(--mono);
+  font-size: 0.86em;
+}

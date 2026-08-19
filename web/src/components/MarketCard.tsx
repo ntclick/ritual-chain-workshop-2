@@ -60,6 +60,8 @@ export function MarketCard({
   const yes = yesPercent(market);
   const total = pool(market);
   const settled = isSettled(market);
+  const bettingOver = settled || currentBlock >= market.closeBlock;
+  const resolveDue = !settled && currentBlock >= market.resolveBlock;
 
   useEffect(() => {
     if (!account || isDemo) {
@@ -324,27 +326,47 @@ export function MarketCard({
               <td className="mono">{market.jsonPath}</td>
             </tr>
             <tr>
-              <td>Closes</td>
+              <td>{bettingOver ? "Closed" : "Closes"}</td>
               <td>
-                block {market.closeBlock.toString()}{" "}
-                <Countdown
-                  target={market.closeBlock}
-                  currentBlock={currentBlock}
-                  blockTimeMs={blockTimeMs}
-                  observedAt={observedAt}
-                />
+                block {market.closeBlock.toString()}
+                {/* Only count toward a deadline that is still ahead. A countdown stuck
+                    on "now" makes a market that has already passed the point look like
+                    it is still waiting for it. */}
+                {!bettingOver && (
+                  <>
+                    {" "}
+                    <Countdown
+                      target={market.closeBlock}
+                      currentBlock={currentBlock}
+                      blockTimeMs={blockTimeMs}
+                      observedAt={observedAt}
+                    />
+                  </>
+                )}
               </td>
             </tr>
             <tr>
-              <td>Resolves</td>
+              <td>{settled ? "Settled" : "Resolves"}</td>
               <td>
-                block {market.resolveBlock.toString()}{" "}
-                <Countdown
-                  target={market.resolveBlock}
-                  currentBlock={currentBlock}
-                  blockTimeMs={blockTimeMs}
-                  observedAt={observedAt}
-                />
+                block {market.resolveBlock.toString()}
+                {settled ? (
+                  <span className="settled-mark"> · confirmed on chain</span>
+                ) : resolveDue ? (
+                  /* The block arrived and nothing came. Saying "now" hides that; the
+                     market is waiting on a callback that may never fire, which is what
+                     expireStuck exists for. */
+                  <span className="awaiting-mark"> · awaiting the Scheduler</span>
+                ) : (
+                  <>
+                    {" "}
+                    <Countdown
+                      target={market.resolveBlock}
+                      currentBlock={currentBlock}
+                      blockTimeMs={blockTimeMs}
+                      observedAt={observedAt}
+                    />
+                  </>
+                )}
               </td>
             </tr>
             {market.attempts > 0 && (
