@@ -177,6 +177,12 @@ code {
 .btn {
   font: inherit;
   font-size: 0.88rem;
+  /* Several of these are links, which would otherwise inherit the underline from a. */
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   font-weight: 500;
   cursor: pointer;
   border: 1px solid var(--line-2);
@@ -1385,22 +1391,20 @@ html {
 /* ═══════════════════════════ logo ═════════════════════════════ */
 
 /*
- * Ritual's official mark, if it has been dropped at public/ritual-logo.svg, is layered
- * over the drawn fallback. No build step, no missing-file error: without it the mask
- * simply resolves to nothing and the SVG below shows through.
+ * Ritual's mark, from public/ritual-mark.png.
+ *
+ * The artwork is black on transparent and would vanish against this background, so it
+ * is used as a mask and filled with currentColor rather than drawn as an image. That
+ * preserves the original alpha — and so the antialiased edges of the knot — while
+ * letting the mark take the colour of whatever it sits in.
  */
 .logo {
-  position: relative;
-  display: inline-flex;
+  display: inline-block;
   flex: none;
   color: var(--text);
-  --logo-casing: var(--bg);
-}
-
-.logo svg {
-  width: 100%;
-  height: 100%;
-  display: block;
+  background: currentColor;
+  -webkit-mask: url("/ritual-mark.png") center / contain no-repeat;
+  mask: url("/ritual-mark.png") center / contain no-repeat;
 }
 
 
