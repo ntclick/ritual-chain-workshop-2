@@ -10,10 +10,12 @@ import type { useWallet } from "@/hooks/useWallet";
 export function Header({
   wallet,
   address,
+  isDemo,
   onAddressChange,
 }: {
   wallet: ReturnType<typeof useWallet>;
   address: `0x${string}` | undefined;
+  isDemo?: boolean;
   onAddressChange: (next: string) => boolean;
 }) {
   const [draft, setDraft] = useState("");
@@ -82,7 +84,10 @@ export function Header({
           {address ? (
             <span className="mono break">{address}</span>
           ) : (
-            <span className="faint">not set</span>
+            /* "not set" alone reads like a fault while sample markets sit below it. */
+            <span className="faint">
+              {isDemo ? "none — showing sample markets" : "not set"}
+            </span>
           )}
         </div>
 
@@ -105,7 +110,7 @@ export function Header({
           </div>
         ) : (
           <button className="btn btn-sm" onClick={() => setEditing(true)}>
-            {address ? "Change" : "Set address"}
+            {address ? "Change" : "Point at a deployment"}
           </button>
         )}
       </div>

@@ -43,7 +43,12 @@ export default function Home() {
     <>
       <Nav />
       <main className="wrap">
-        <Header wallet={wallet} address={address} onAddressChange={setAddress} />
+        <Header
+          wallet={wallet}
+          address={address}
+          isDemo={data?.isDemo}
+          onAddressChange={setAddress}
+        />
 
       {/* The preview board is more use than a setup card, so it wins when it is showing. */}
       {!address && !data?.isDemo ? (
