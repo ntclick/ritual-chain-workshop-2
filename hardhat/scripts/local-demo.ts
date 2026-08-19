@@ -66,11 +66,23 @@ console.log(`  oracle answers 200 with {"price":${observed}}`);
 console.log("");
 console.log("── Deploy ────────────────────────────────────────────────");
 
-const predict = await viem.deployContract("RitualPredict", [BLOCK_TIME_MS]);
-console.log(`  RitualPredict        ${predict.address}`);
+// Set PREDICT_ADDRESS to add another market to an existing deployment instead of
+// starting over — handy for demoing several markets side by side. Re-etching above is
+// safe either way: hardhat_setCode replaces code without clearing storage, so markets
+// already booked with the Scheduler double survive.
+const existing = process.env.PREDICT_ADDRESS as `0x${string}` | undefined;
 
-await predict.write.fundExecution([1_000_000n], { value: parseEther("1") });
-console.log(`  prepaid execution    1 RITUAL`);
+const predict = existing
+  ? await viem.getContractAt("RitualPredict", existing)
+  : await viem.deployContract("RitualPredict", [BLOCK_TIME_MS]);
+
+if (existing) {
+  console.log(`  RitualPredict        ${predict.address}  (reused)`);
+} else {
+  console.log(`  RitualPredict        ${predict.address}`);
+  await predict.write.fundExecution([1_000_000n], { value: parseEther("1") });
+  console.log(`  prepaid execution    1 RITUAL`);
+}
 
 console.log("");
 console.log("── Demo market ───────────────────────────────────────────");
