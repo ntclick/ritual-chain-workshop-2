@@ -9,6 +9,14 @@ fixed when the market was created; the contract calls the HTTP precompile to rea
 oracle URL, extracts one number with the jq precompile, compares it to the target, and settles.
 Winners then pull their proportional share of the pool.
 
+**Live: <https://ritualpredict.vercel.app>**
+
+The deployed board shows **sample markets, not chain data** — there is nowhere public to read
+from while Ritual's testnet is down, and the working contract lives on a local node. It is
+labelled as such in the app, and betting is disabled there. To see it settle real markets, run
+[the stack locally](#the-frontend); the site switches to live data the moment it is pointed at a
+reachable deployment.
+
 ---
 
 ## Architecture
@@ -211,6 +219,12 @@ live pool splits and pari-mutuel odds, betting, claiming, market creation, and t
 resolution diagnostics (attempt count, observed value, why a market went `Invalid`). It
 also serves the demo oracle at `/api/oracle/eth`. See [web/README.md](web/README.md).
 
+Deployed at <https://ritualpredict.vercel.app>. It opens on the local Hardhat node rather
+than Ritual Chain — pointing visitors at an RPC that answers nothing helps nobody, whereas
+anyone running the stack can drive their own node from the deployed page. Whether a browser
+permits an `https://` origin to reach `127.0.0.1` is untested and may well be refused; if it
+is, the board falls back to clearly-labelled sample markets rather than an error.
+
 The whole thing runs without a testnet:
 
 ```bash
@@ -307,6 +321,9 @@ never answers — so it is worth being exact about which claims here are backed 
   1 gwei of priority fee silently; scheduled executions were booking a tip of `0`. Whether
   a Scheduler-fired system transaction is subject to that mempool floor at all could not
   be tested with the chain down.
+- **The deployed site is not a live deployment.** <https://ritualpredict.vercel.app> serves
+  the app itself, and the oracle route on it returns a real CoinGecko price, but the market
+  board there is sample data. No contract is reachable from it.
 - **Local resolution is manual.** `local-demo.ts` mines on a timer so deadlines arrive,
   but a local node has no Scheduler, so `local-resolve.ts` stands in for it. Only the
   closing half of the lifecycle is autonomous here.

@@ -1,5 +1,9 @@
 # Ritual Predict — web
 
+**Live: <https://ritualpredict.vercel.app>** — serving sample markets, because no contract is
+reachable from a public page while Ritual's testnet is down. Betting is disabled there and the
+board says so. Point it at a running deployment and it switches to live data.
+
 The frontend for the `RitualPredict` market contract. Next.js App Router, viem, and no
 wallet library: a market UI does not need one, and the connection logic is small enough
 to read in one sitting (`src/lib/wallet.ts`, `src/hooks/useWallet.ts`).
