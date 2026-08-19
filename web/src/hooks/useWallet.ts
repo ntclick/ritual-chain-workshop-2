@@ -87,7 +87,15 @@ export function useWallet() {
   const connect = useCallback(async () => {
     const provider = getProvider();
     if (!provider) {
-      setError("No injected wallet found. Install MetaMask or another EIP-1193 wallet.");
+      // "Install MetaMask" is the wrong advice for most people who see this, because
+      // they already have. Far more often the page is open somewhere extensions do not
+      // run — an in-app browser, a preview pane — or the extension is switched off for
+      // this site.
+      setError(
+        "No wallet answered. If this page is open inside another app's browser, " +
+          "extensions do not run there — open it in Chrome or Firefox directly. " +
+          "Otherwise check that your wallet is enabled for this site, then reload.",
+      );
       return;
     }
 

@@ -125,8 +125,9 @@ export function Header({
 
       {!wallet.hasWallet && (
         <p className="banner banner-info">
-          No injected wallet detected. You can still browse every market — betting and
-          claiming need MetaMask or another EIP-1193 wallet.
+          No wallet detected — you can still browse every market. If you have one
+          installed, extensions do not run inside another app's in-app browser; open this
+          page in Chrome or Firefox directly.
         </p>
       )}
 
