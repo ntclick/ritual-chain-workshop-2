@@ -40,14 +40,19 @@ function market(m: Partial<Market> & Pick<Market, "id" | "question">): Market {
 
 export const DEMO_BLOCK = 1_120n;
 
+/** Ritual Chain measured ~195ms when this was written. */
+export const DEMO_BLOCK_TIME_MS = 195;
+
 export const DEMO_MARKETS: Market[] = [
   market({
     id: 4n,
     question: "Will ETH/USD be at or above $4,000 when this market resolves?",
     totalYes: parseEther("3.2"),
     totalNo: parseEther("6.8"),
-    closeBlock: 1_400n,
-    resolveBlock: 1_600n,
+    // Far enough out that the sample market stays open for a visit rather than
+    // expiring while someone reads the page.
+    closeBlock: 22_120n,
+    resolveBlock: 28_120n,
     state: 0, // Open
   }),
   market({
@@ -58,8 +63,8 @@ export const DEMO_MARKETS: Market[] = [
     target: 100_000n,
     totalYes: parseEther("1.5"),
     totalNo: parseEther("4.5"),
-    closeBlock: 1_100n,
-    resolveBlock: 1_150n,
+    closeBlock: 900n,
+    resolveBlock: 950n,
     state: 3, // Resolved
     outcome: 2, // NO
     attempts: 1,
@@ -74,8 +79,8 @@ export const DEMO_MARKETS: Market[] = [
     comparator: 0, // GT
     totalYes: parseEther("5"),
     totalNo: parseEther("1.25"),
-    closeBlock: 1_000n,
-    resolveBlock: 1_050n,
+    closeBlock: 700n,
+    resolveBlock: 760n,
     state: 3,
     outcome: 1, // YES
     attempts: 2,
@@ -88,8 +93,8 @@ export const DEMO_MARKETS: Market[] = [
     jsonPath: ".price",
     totalYes: parseEther("2"),
     totalNo: parseEther("2"),
-    closeBlock: 900n,
-    resolveBlock: 950n,
+    closeBlock: 500n,
+    resolveBlock: 560n,
     state: 4, // Invalid
     outcome: 0, // never became a NO
     attempts: 3,

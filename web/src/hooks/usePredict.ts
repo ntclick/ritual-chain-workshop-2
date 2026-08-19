@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isAddress } from "viem";
 
-import { DEMO_BLOCK, DEMO_MARKETS } from "@/lib/demo";
+import { DEMO_BLOCK, DEMO_BLOCK_TIME_MS, DEMO_MARKETS } from "@/lib/demo";
 import type { Market } from "@/lib/market";
 import { predictAbi } from "@/lib/predict-abi";
 import type { useWallet } from "./useWallet";
@@ -18,16 +18,34 @@ const IDLE_AFTER_MS = 20_000;
  * configured, or the configured one is unreachable. A successful read always wins, so a
  * working deployment can never be masked by the preview.
  */
-const DEMO_DATA: PredictData = {
+const DEMO_DATA: Omit<PredictData, "currentBlock" | "observedAt"> = {
   markets: DEMO_MARKETS,
-  currentBlock: DEMO_BLOCK,
-  observedAt: 0,
   chainIdle: false,
   isDemo: true,
-  blockTimeMs: 195n,
+  blockTimeMs: BigInt(DEMO_BLOCK_TIME_MS),
   executionBalance: 500_000_000_000_000_000n,
   maxAttempts: 3,
 };
+
+/**
+ * The sample board advances its own block height.
+ *
+ * A frozen counter under a market labelled "Open" reads as a broken page — which is the
+ * failure this project is otherwise about. The preview is already declared as sample
+ * data, so letting it keep time is not a claim about any chain; it is the difference
+ * between a still image and a plausible one. `observedAt` is set to the moment the
+ * current block would have arrived, which is what lets the countdown interpolate
+ * smoothly between polls instead of stepping.
+ */
+function demoDataAt(startedAt: number): PredictData {
+  const elapsed = Math.max(0, Date.now() - startedAt);
+  const mined = Math.floor(elapsed / DEMO_BLOCK_TIME_MS);
+  return {
+    ...DEMO_DATA,
+    currentBlock: DEMO_BLOCK + BigInt(mined),
+    observedAt: startedAt + mined * DEMO_BLOCK_TIME_MS,
+  };
+}
 
 /**
  * The deployed market contract.
@@ -101,10 +119,13 @@ export function usePredict(
   const requestKey = useRef("");
   // Last time the block number actually moved, used to spot a stalled chain.
   const lastBlock = useRef<{ number: bigint; at: number }>({ number: -1n, at: 0 });
+  // When the preview started, so its block height can climb from there.
+  const demoStart = useRef(0);
 
   const refresh = useCallback(async () => {
     if (!address) {
-      setData(DEMO_DATA);
+      if (!demoStart.current) demoStart.current = Date.now();
+      setData(demoDataAt(demoStart.current));
       setLoading(false);
       return;
     }
@@ -150,7 +171,8 @@ export function usePredict(
       // Name the chain being read. The usual cause is viewing Ritual Chain — whose
       // public RPC is currently down — while the contract lives on the local node, and
       // an unnamed "network unreachable" gives no hint which of the two to change.
-      setData((prev) => (prev && !prev.isDemo ? prev : DEMO_DATA));
+      if (!demoStart.current) demoStart.current = Date.now();
+      setData((prev) => (prev && !prev.isDemo ? prev : demoDataAt(demoStart.current)));
       setError(
         `Could not read ${address} on ${chain.name}. Either the contract is not ` +
           `deployed on that network, or its RPC is unreachable. Check the network selector above.`,
