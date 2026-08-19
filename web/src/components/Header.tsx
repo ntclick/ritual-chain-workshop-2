@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { Logo } from "@/components/Logo";
 import { SUPPORTED_CHAINS } from "@/lib/chains";
 import { shortAddress } from "@/lib/market";
 import type { useWallet } from "@/hooks/useWallet";
@@ -32,12 +33,15 @@ export function Header({
   return (
     <header className="stack" style={{ marginBottom: "1.5rem" }}>
       <div className="masthead">
-        <div className="brand">
-          <h1>Ritual Predict</h1>
-          <p>
-            Binary markets that settle themselves. The Scheduler wakes the contract, a TEE
-            reads the oracle, and the pool pays out — no keeper, no cron, no external bot.
-          </p>
+        <div className="brandmark">
+          <Logo />
+          <div className="brand">
+            <h1>Ritual Predict</h1>
+            <p>
+              Markets that settle themselves — Scheduler wakes the contract, a TEE reads the
+              oracle, the pool pays out. No keeper, no cron, no bot.
+            </p>
+          </div>
         </div>
 
         <div className="row">
@@ -56,7 +60,7 @@ export function Header({
           </select>
 
           {wallet.account ? (
-            <span className="badge badge-id" title={wallet.account}>
+            <span className="badge mono" title={wallet.account}>
               <span className="live" />
               {shortAddress(wallet.account)}
             </span>
@@ -74,7 +78,7 @@ export function Header({
 
       <div className="addressbar">
         <div className="row" style={{ gap: "0.55rem", minWidth: 0 }}>
-          <span className="stat-label">Contract</span>
+          <span className="label">Contract</span>
           {address ? (
             <span className="mono break">{address}</span>
           ) : (

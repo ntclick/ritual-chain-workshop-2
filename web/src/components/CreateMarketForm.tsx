@@ -154,7 +154,7 @@ export function CreateMarketForm({
       <div className="templates">
         {groups.map((group) => (
           <div key={group} className="template-group">
-            <span className="template-group-label">{group}</span>
+            <span className="label">{group}</span>
             <div className="chips">
               {templates
                 .filter((t) => t.group === group)

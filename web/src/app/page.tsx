@@ -1,18 +1,39 @@
 "use client";
 
+import { useMemo, useState } from "react";
+
 import { CreateMarketForm } from "@/components/CreateMarketForm";
 import { Header } from "@/components/Header";
 import { MarketCard } from "@/components/MarketCard";
 import { usePredict, usePredictAddress } from "@/hooks/usePredict";
 import { useWallet } from "@/hooks/useWallet";
-import { ritual, STATE } from "@/lib/market";
+import { isSettled, ritual, STATE, type Market } from "@/lib/market";
+
+type Filter = "all" | "open" | "resolved" | "invalid";
+
+const FILTERS: { id: Filter; label: string; match: (m: Market) => boolean }[] = [
+  { id: "all", label: "All", match: () => true },
+  { id: "open", label: "Live", match: (m) => !isSettled(m) },
+  { id: "resolved", label: "Resolved", match: (m) => m.state === STATE.Resolved },
+  { id: "invalid", label: "Invalid", match: (m) => m.state === STATE.Invalid },
+];
 
 export default function Home() {
   const wallet = useWallet();
   const { address, setAddress } = usePredictAddress();
   const { data, error, loading, refresh } = usePredict(wallet, address);
+  const [filter, setFilter] = useState<Filter>("all");
 
-  const openCount = data?.markets.filter((m) => m.state === STATE.Open).length ?? 0;
+  const markets = data?.markets ?? [];
+  const visible = useMemo(
+    () => markets.filter(FILTERS.find((f) => f.id === filter)!.match),
+    [markets, filter],
+  );
+
+  const volume = useMemo(
+    () => markets.reduce((sum, m) => sum + m.totalYes + m.totalNo, 0n),
+    [markets],
+  );
 
   return (
     <main className="wrap">
@@ -21,11 +42,10 @@ export default function Home() {
       {!address ? (
         <section className="card stack">
           <div>
-            <h2 className="card-title">Point the app at a deployment</h2>
+            <h2 className="card-title">No contract configured</h2>
             <p className="card-sub">
               Set <code>NEXT_PUBLIC_PREDICT_ADDRESS</code> in <code>web/.env.local</code>, or
-              paste an address with <strong>Set address</strong> above. To deploy one on a
-              local node:
+              paste an address with <strong>Change</strong> above. To deploy one locally:
             </p>
           </div>
           <pre>{`cd hardhat
@@ -37,21 +57,22 @@ npx hardhat run scripts/local-demo.ts --network localhost   # terminal 2`}</pre>
           {data && (
             <div className="stats">
               <div className="stat">
-                <span className="stat-label">Block</span>
+                <span className="label">Block</span>
                 <span className="stat-value">
                   <span className="live" />
                   {data.currentBlock.toString()}
                 </span>
               </div>
               <div className="stat">
-                <span className="stat-label">Markets</span>
-                <span className="stat-value">
-                  {data.markets.length}
-                  {openCount > 0 && <span className="faint"> · {openCount} open</span>}
-                </span>
+                <span className="label">Markets</span>
+                <span className="stat-value">{markets.length}</span>
               </div>
               <div className="stat">
-                <span className="stat-label">Prepaid execution</span>
+                <span className="label">Volume</span>
+                <span className="stat-value">{ritual(volume)} RITUAL</span>
+              </div>
+              <div className="stat">
+                <span className="label">Prepaid execution</span>
                 <span className="stat-value">
                   {data.executionBalance === 0n ? (
                     <span style={{ color: "var(--no)" }}>0 — resolution skipped</span>
@@ -74,29 +95,55 @@ npx hardhat run scripts/local-demo.ts --network localhost   # terminal 2`}</pre>
 
           <CreateMarketForm wallet={wallet} address={address} onCreated={refresh} />
 
+          {markets.length > 0 && (
+            <div className="filters">
+              {FILTERS.map((f) => {
+                const count = markets.filter(f.match).length;
+                return (
+                  <button
+                    key={f.id}
+                    className="tab"
+                    aria-pressed={filter === f.id}
+                    onClick={() => setFilter(f.id)}
+                  >
+                    {f.label}
+                    <small>{count}</small>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {loading && !data && (
-            <>
+            <div className="market-grid">
               <div className="skeleton" />
               <div className="skeleton" />
-            </>
+              <div className="skeleton" />
+            </div>
           )}
 
-          {data && data.markets.length === 0 && (
-            <p className="empty">No markets yet. Create the first one.</p>
+          {data && markets.length === 0 && (
+            <p className="empty">No markets yet — create the first one.</p>
           )}
 
-          {data?.markets.map((market) => (
-            <MarketCard
-              key={market.id.toString()}
-              market={market}
-              wallet={wallet}
-              address={address}
-              currentBlock={data.currentBlock}
-              blockTimeMs={data.blockTimeMs}
-              maxAttempts={data.maxAttempts}
-              onChanged={refresh}
-            />
-          ))}
+          {data && markets.length > 0 && visible.length === 0 && (
+            <p className="empty">Nothing matches this filter.</p>
+          )}
+
+          <div className="market-grid">
+            {visible.map((market) => (
+              <MarketCard
+                key={market.id.toString()}
+                market={market}
+                wallet={wallet}
+                address={address}
+                currentBlock={data!.currentBlock}
+                blockTimeMs={data!.blockTimeMs}
+                maxAttempts={data!.maxAttempts}
+                onChanged={refresh}
+              />
+            ))}
+          </div>
         </div>
       )}
 

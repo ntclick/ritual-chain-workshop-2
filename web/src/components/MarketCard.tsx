@@ -25,8 +25,6 @@ import {
 import { predictAbi } from "@/lib/predict-abi";
 
 type Position = { yes: bigint; no: bigint; settled: boolean; claimable: bigint };
-
-/** Actions a card can send. `expireStuck` takes no stake, the others may. */
 type Action = "bet" | "claimWinnings" | "claimRefund" | "expireStuck";
 
 export function MarketCard({
@@ -56,6 +54,7 @@ export function MarketCard({
   const bettable = isBettable(market, currentBlock);
   const yes = yesPercent(market);
   const total = pool(market);
+  const settled = isSettled(market);
 
   useEffect(() => {
     if (!account) {
@@ -91,7 +90,7 @@ export function MarketCard({
   // Read the deadline from the contract rather than recomputing the formula here, so
   // the two can never drift apart.
   useEffect(() => {
-    if (isSettled(market)) {
+    if (settled) {
       setExpiryBlock(undefined);
       return;
     }
@@ -112,7 +111,7 @@ export function MarketCard({
     return () => {
       cancelled = true;
     };
-  }, [address, market.id, market.state, publicClient]);
+  }, [address, market.id, settled, publicClient]);
 
   async function send(fn: Action) {
     const hash = await tx.run(
@@ -157,143 +156,77 @@ export function MarketCard({
       ? "badge-yes"
       : market.state === STATE.Invalid
         ? "badge-invalid"
-        : "badge-open";
+        : market.state === STATE.Resolving
+          ? "badge-live"
+          : "badge-open";
 
   const explorer = tx.hash ? explorerTx(wallet.chainId, tx.hash) : undefined;
+  const canClaim = position && !position.settled && position.claimable > 0n;
 
   return (
     <article className="card market">
-      <div className="market-head">
-        <div style={{ minWidth: 0 }}>
-          <div className="row" style={{ gap: "0.4rem" }}>
-            <span className="badge badge-id">#{market.id.toString()}</span>
-            <span className={`badge ${stateClass}`}>{stateName(market)}</span>
-            {isSettled(market) && market.outcome !== RESULT.Unresolved && (
-              <span
-                className={`badge ${market.outcome === RESULT.Yes ? "badge-yes" : "badge-no"}`}
-              >
-                {outcomeName(market)}
-              </span>
-            )}
-          </div>
-          <h2 className="market-question">{market.question}</h2>
-        </div>
-
-        <div className="pool-total">
-          <b>{ritual(total)}</b>
-          <span>RITUAL pool</span>
-        </div>
-      </div>
-
       <div>
-        <div className="split-legend">
-          <span style={{ color: "var(--yes)" }}>YES {yes.toFixed(1)}%</span>
-          <span style={{ color: "var(--no)" }}>NO {(100 - yes).toFixed(1)}%</span>
+        <div className="market-top">
+          <span className="badge">#{market.id.toString()}</span>
+          <span className={`badge ${stateClass}`}>{stateName(market)}</span>
+          {settled && market.outcome !== RESULT.Unresolved && (
+            <span className={`badge ${market.outcome === RESULT.Yes ? "badge-yes" : "badge-no"}`}>
+              {outcomeName(market)}
+            </span>
+          )}
+          {market.state === STATE.Resolving && (
+            <span className="badge badge-live">
+              {market.attempts}/{maxAttempts} tries
+            </span>
+          )}
         </div>
-        <div
-          className="bar"
-          role="img"
-          aria-label={`YES ${yes.toFixed(1)} percent, NO ${(100 - yes).toFixed(1)} percent`}
-        >
-          <span style={{ width: `${yes}%` }} />
+        <h2 className="market-question" title={market.question}>
+          {market.question}
+        </h2>
+      </div>
+
+      {/* The headline number, the way a prediction market is actually read. */}
+      <div className="odds">
+        <div className={`odds-figure${yes < 50 ? " low" : ""}`}>
+          <b>{yes.toFixed(0)}%</b>
+          <span>chance yes</span>
         </div>
-        <div className="split-amounts">
-          <span>{ritual(market.totalYes)}</span>
-          <span>{ritual(market.totalNo)}</span>
+        <div style={{ textAlign: "right" }}>
+          <div className="stat-value">{ritual(total)}</div>
+          <div className="label">pool</div>
         </div>
       </div>
 
-      <table className="kv">
-        <tbody>
-          <tr>
-            <td>Rule</td>
-            <td className="mono">{ruleText(market)}</td>
-          </tr>
-          <tr>
-            <td>Oracle</td>
-            <td className="mono break">
-              {market.oracleUrl} <span className="faint">· jq {market.jsonPath}</span>
-            </td>
-          </tr>
-          <tr>
-            <td>Betting closes</td>
-            <td>
-              block {market.closeBlock.toString()}{" "}
-              <span className="faint">
-                ({blocksUntil(market.closeBlock, currentBlock, blockTimeMs)})
-              </span>
-            </td>
-          </tr>
-          <tr>
-            <td>Resolves</td>
-            <td>
-              block {market.resolveBlock.toString()}{" "}
-              <span className="faint">
-                ({blocksUntil(market.resolveBlock, currentBlock, blockTimeMs)})
-              </span>
-            </td>
-          </tr>
-          {market.attempts > 0 && (
-            <tr>
-              <td>Attempts</td>
-              <td>
-                {market.attempts} / {maxAttempts}
-              </td>
-            </tr>
-          )}
-          {market.observedValue > 0n && (
-            <tr>
-              <td>Observed</td>
-              <td className="mono">{market.observedValue.toString()}</td>
-            </tr>
-          )}
-          {market.invalidReason !== "" && (
-            <tr>
-              <td>Invalid</td>
-              <td style={{ color: "var(--no)" }}>{market.invalidReason}</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-
-      {position && (position.yes > 0n || position.no > 0n) && (
-        <div className="position">
-          <span className="stat-label">Your position</span>
-          {position.yes > 0n && (
-            <span style={{ color: "var(--yes)" }}>YES {ritual(position.yes)}</span>
-          )}
-          {position.no > 0n && (
-            <span style={{ color: "var(--no)" }}>NO {ritual(position.no)}</span>
-          )}
-          {position.settled ? (
-            <span className="faint">· already claimed</span>
-          ) : (
-            position.claimable > 0n && <span>· claimable {ritual(position.claimable)}</span>
-          )}
-        </div>
-      )}
+      <div
+        className="bar"
+        role="img"
+        aria-label={`YES ${yes.toFixed(1)} percent, NO ${(100 - yes).toFixed(1)} percent`}
+      >
+        <span style={{ width: `${yes}%` }} />
+      </div>
 
       {bettable && (
         <div className="bet">
-          <div className="row" style={{ gap: "0.55rem", flexWrap: "nowrap" }}>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
             <button
               className="btn btn-yes"
               aria-pressed={side === true}
               onClick={() => setSide(true)}
             >
-              YES {stake > 0n && `· ${payoutMultiple(market, true, stake).toFixed(2)}×`}
+              Yes
+              <small>{stake > 0n ? `${payoutMultiple(market, true, stake).toFixed(2)}×` : "—"}</small>
             </button>
             <button
               className="btn btn-no"
               aria-pressed={side === false}
               onClick={() => setSide(false)}
             >
-              NO {stake > 0n && `· ${payoutMultiple(market, false, stake).toFixed(2)}×`}
+              No
+              <small>{stake > 0n ? `${payoutMultiple(market, false, stake).toFixed(2)}×` : "—"}</small>
             </button>
           </div>
           <div className="bet-amount">
             <input
-              className="mono"
               inputMode="decimal"
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
@@ -301,68 +234,125 @@ export function MarketCard({
             />
             <button
               className="btn btn-primary"
-              disabled={
-                !canTransact(wallet) || side === undefined || stake <= 0n || tx.pending
-              }
+              disabled={!canTransact(wallet) || side === undefined || stake <= 0n || tx.pending}
               onClick={() => void send("bet")}
             >
-              {tx.pending ? "Confirming…" : `Stake ${amount || "0"} RITUAL`}
+              {tx.pending ? "Signing…" : "Stake"}
             </button>
           </div>
           <NetworkGate wallet={wallet} />
         </div>
       )}
 
-      {market.state === STATE.Resolved && position && !position.settled && position.claimable > 0n && (
+      {position && (position.yes > 0n || position.no > 0n) && (
+        <div className="position">
+          <span className="label">Position</span>
+          {position.yes > 0n && <span style={{ color: "var(--yes)" }}>YES {ritual(position.yes)}</span>}
+          {position.no > 0n && <span style={{ color: "var(--no)" }}>NO {ritual(position.no)}</span>}
+          {position.settled ? (
+            <span className="faint">· claimed</span>
+          ) : (
+            position.claimable > 0n && <span>· worth {ritual(position.claimable)}</span>
+          )}
+        </div>
+      )}
+
+      {market.state === STATE.Resolved && canClaim && (
         <button
           className="btn btn-primary btn-block"
           disabled={tx.pending || !canTransact(wallet)}
           onClick={() => void send("claimWinnings")}
         >
-          {tx.pending ? "Confirming…" : `Claim ${ritual(position.claimable)} RITUAL`}
+          {tx.pending ? "Signing…" : `Claim ${ritual(position!.claimable)} RITUAL`}
         </button>
       )}
 
-      {market.state === STATE.Invalid && position && !position.settled && position.claimable > 0n && (
+      {market.state === STATE.Invalid && canClaim && (
         <button
           className="btn btn-block"
           disabled={tx.pending || !canTransact(wallet)}
           onClick={() => void send("claimRefund")}
         >
-          {tx.pending ? "Confirming…" : `Refund ${ritual(position.claimable)} RITUAL`}
+          {tx.pending ? "Signing…" : `Refund ${ritual(position!.claimable)} RITUAL`}
         </button>
       )}
 
       {/* Every path to Invalid runs inside the Scheduler callback, so a market whose
           executions never arrived would otherwise trap its stakes forever. */}
-      {!isSettled(market) && expiryBlock !== undefined && (
+      {!settled && expiryBlock !== undefined && currentBlock >= expiryBlock && (
         <div className="banner banner-warn stack" style={{ gap: "0.5rem" }}>
-          {currentBlock >= expiryBlock ? (
-            <>
-              <span>
-                The Scheduler never settled this market
-                {market.attempts > 0 ? ` after ${market.attempts} attempt(s)` : ""}. Anyone
-                can now expire it so every stake becomes refundable.
-              </span>
-              <button
-                className="btn"
-                disabled={!canTransact(wallet) || tx.pending}
-                onClick={() => void send("expireStuck")}
-              >
-                {tx.pending ? "Confirming…" : "Expire market and open refunds"}
-              </button>
-            </>
-          ) : (
-            market.attempts >= maxAttempts && (
-              <span>
-                All {maxAttempts} attempts are spent. If nothing settles it, this market
-                can be expired for refunds at block {expiryBlock.toString()} (
-                {blocksUntil(expiryBlock, currentBlock, blockTimeMs)}).
-              </span>
-            )
-          )}
+          <span>
+            The Scheduler never settled this market
+            {market.attempts > 0 ? ` after ${market.attempts} attempt(s)` : ""}. Anyone can
+            expire it so every stake becomes refundable.
+          </span>
+          <button
+            className="btn btn-sm"
+            disabled={!canTransact(wallet) || tx.pending}
+            onClick={() => void send("expireStuck")}
+          >
+            {tx.pending ? "Signing…" : "Expire and open refunds"}
+          </button>
         </div>
       )}
+
+      <details className="detail">
+        <summary>Resolution rule</summary>
+        <table className="kv">
+          <tbody>
+            <tr>
+              <td>Rule</td>
+              <td className="mono">{ruleText(market)}</td>
+            </tr>
+            <tr>
+              <td>Oracle</td>
+              <td className="mono break">{market.oracleUrl}</td>
+            </tr>
+            <tr>
+              <td>jq</td>
+              <td className="mono">{market.jsonPath}</td>
+            </tr>
+            <tr>
+              <td>Closes</td>
+              <td>
+                block {market.closeBlock.toString()}{" "}
+                <span className="faint">
+                  ({blocksUntil(market.closeBlock, currentBlock, blockTimeMs)})
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td>Resolves</td>
+              <td>
+                block {market.resolveBlock.toString()}{" "}
+                <span className="faint">
+                  ({blocksUntil(market.resolveBlock, currentBlock, blockTimeMs)})
+                </span>
+              </td>
+            </tr>
+            {market.attempts > 0 && (
+              <tr>
+                <td>Attempts</td>
+                <td>
+                  {market.attempts} / {maxAttempts}
+                </td>
+              </tr>
+            )}
+            {market.observedValue > 0n && (
+              <tr>
+                <td>Observed</td>
+                <td className="mono">{market.observedValue.toString()}</td>
+              </tr>
+            )}
+            {market.invalidReason !== "" && (
+              <tr>
+                <td>Invalid</td>
+                <td style={{ color: "var(--no)" }}>{market.invalidReason}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </details>
 
       {tx.error && <p className="banner banner-error">{tx.error}</p>}
       {tx.hash && !tx.pending && !tx.error && (
@@ -370,13 +360,26 @@ export function MarketCard({
           Confirmed ·{" "}
           {explorer ? (
             <a href={explorer} target="_blank" rel="noreferrer" className="mono">
-              {tx.hash.slice(0, 14)}…
+              {tx.hash.slice(0, 12)}…
             </a>
           ) : (
-            <span className="mono">{tx.hash.slice(0, 14)}…</span>
+            <span className="mono">{tx.hash.slice(0, 12)}…</span>
           )}
         </p>
       )}
+
+      <div className="market-foot">
+        <span>
+          {ritual(market.totalYes)} yes · {ritual(market.totalNo)} no
+        </span>
+        <span>
+          {settled
+            ? "settled"
+            : bettable
+              ? `closes ${blocksUntil(market.closeBlock, currentBlock, blockTimeMs)}`
+              : `resolves ${blocksUntil(market.resolveBlock, currentBlock, blockTimeMs)}`}
+        </span>
+      </div>
     </article>
   );
 }
