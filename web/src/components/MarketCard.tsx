@@ -411,8 +411,13 @@ export function MarketCard({
         <span>
           {ritual(market.totalYes)} yes · {ritual(market.totalNo)} no
         </span>
+        {/* Same three states as the detail rows. The footer used to run its own
+            countdown, so a market could read "awaiting the Scheduler" above and
+            "resolves now" below at the same time. */}
         {settled ? (
           <span>settled</span>
+        ) : resolveDue ? (
+          <span className="awaiting-mark">awaiting the Scheduler</span>
         ) : (
           <span className="foot-clock">
             {bettable ? "closes" : "resolves"}{" "}
