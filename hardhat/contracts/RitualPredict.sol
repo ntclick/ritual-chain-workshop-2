@@ -86,6 +86,11 @@ contract RitualPredict {
     uint32 public constant MAX_ATTEMPTS = 3;
     uint32 public constant RETRY_INTERVAL_BLOCKS = 200;
 
+    /// Slack after the last booked attempt could still have settled, before anyone is
+    /// allowed to declare the market abandoned. Generous on purpose: expiring a market
+    /// that was about to resolve would turn a good outcome into a refund.
+    uint32 public constant EXPIRY_GRACE_BLOCKS = 300;
+
     /// Gas per scheduled execution — one HTTP call, one jq call, a few storage writes.
     uint32 public constant RESOLVE_GAS_LIMIT = 2_000_000;
 
@@ -101,6 +106,12 @@ contract RitualPredict {
 
     /// Floor for the fee authorised per scheduled execution.
     uint256 public constant MIN_MAX_FEE_PER_GAS = 1 gwei;
+
+    /// Ritual Chain's mempool drops anything under 1 gwei of priority fee *silently* —
+    /// no error, no receipt, no nonce consumed. A scheduled execution that vanishes
+    /// that way is indistinguishable from one that was never booked, so the tip is
+    /// floored rather than left at zero.
+    uint256 public constant MIN_PRIORITY_FEE_PER_GAS = 1 gwei;
 
     uint256 public constant MIN_BETTING_SECONDS = 30;
     uint256 public constant MIN_RESOLVE_DELAY_SECONDS = 15;
@@ -160,6 +171,14 @@ contract RitualPredict {
         uint256 observedValue
     );
     event MarketInvalidated(uint256 indexed marketId, string reason);
+    /// A best-effort cleanup that failed. Swallowing this silently would leak the
+    /// prepaid fees for the unused executions with nothing on chain to explain it.
+    event ScheduleCancelFailed(uint256 indexed marketId, bytes reason);
+    event MarketExpired(
+        uint256 indexed marketId,
+        address indexed caller,
+        uint8 attemptsMade
+    );
     event WinningsClaimed(
         uint256 indexed marketId,
         address indexed claimant,
@@ -182,6 +201,8 @@ contract RitualPredict {
     error NothingToClaim();
     error AlreadySettled();
     error BadDuration();
+    error NotExpired();
+    error AlreadySettledMarket();
     error EmptyString();
     error TransferFailed();
 
@@ -337,16 +358,64 @@ contract RitualPredict {
         }
 
         // Settled either way — hand the unused executions back to the Scheduler.
-        _cancelRemaining(m);
+        _cancelRemaining(m, marketId);
     }
 
     /// Release attempts that were booked but are no longer needed. Never allowed to
     /// revert: the market is already settled and a failed cancel only wastes prepaid
     /// fees, which is not worth undoing a resolution over.
-    function _cancelRemaining(Market storage m) private {
+    function _cancelRemaining(Market storage m, uint256 marketId) private {
         if (m.scheduleId == 0) return;
         if (m.attempts >= MAX_ATTEMPTS) return;
-        try IScheduler(RitualChain.SCHEDULER).cancel(m.scheduleId) {} catch {}
+        try IScheduler(RitualChain.SCHEDULER).cancel(m.scheduleId) {}
+        catch (bytes memory reason) {
+            emit ScheduleCancelFailed(marketId, reason);
+        }
+    }
+
+    /**
+     * Last resort: make an abandoned market refundable.
+     *
+     * Every path to `Invalid` runs *inside* `onScheduledResolve`, so a market whose
+     * scheduled executions never arrive can never reach it — `claimWinnings` reverts
+     * `NotResolved`, `claimRefund` reverts `NotInvalid`, and the stakes sit in this
+     * contract forever. That is not hypothetical: the Scheduler *skips* executions when
+     * the payer's RitualWallet balance is short, so a market created against an empty
+     * execution balance books three executions that silently never run.
+     *
+     * Permissionless by design. Whoever is owed money should not have to ask anyone for
+     * permission to unstick their own stake, and there is nothing here worth gating —
+     * the call only ever converts a market nobody can settle into one everybody can
+     * refund from.
+     */
+    function expireStuck(uint256 marketId) external {
+        Market storage m = _market(marketId);
+        if (m.state == MarketState.Resolved || m.state == MarketState.Invalid)
+            revert AlreadySettledMarket();
+        if (block.number < expiryBlock(marketId)) revert NotExpired();
+
+        emit MarketExpired(marketId, msg.sender, m.attempts);
+        _invalidate(m, marketId, "resolution never completed");
+
+        // Nothing more will be attempted, so hand back whatever is still booked.
+        _cancelRemaining(m, marketId);
+    }
+
+    /**
+     * The block from which `expireStuck` is allowed.
+     *
+     * The last booked attempt lands at `resolveBlock + (MAX_ATTEMPTS-1) * frequency`,
+     * and the Scheduler still honours its TTL after that, so the market is only
+     * genuinely abandoned once both have passed — plus grace.
+     */
+    function expiryBlock(uint256 marketId) public view returns (uint256) {
+        Market storage m = _market(marketId);
+        return
+            uint256(m.resolveBlock) +
+            uint256(MAX_ATTEMPTS - 1) *
+            RETRY_INTERVAL_BLOCKS +
+            SCHEDULER_TTL_BLOCKS +
+            EXPIRY_GRACE_BLOCKS;
     }
 
     /// A failed oracle read is never interpreted as NO. Once the booked attempts are
@@ -606,7 +675,9 @@ contract RitualPredict {
             (0, marketId)
         );
 
-        uint256 maxFeePerGas = block.basefee * 2;
+        // maxFeePerGas has to cover the tip as well as the base fee, or the execution
+        // is unpayable at the very moment it is supposed to run.
+        uint256 maxFeePerGas = block.basefee * 2 + MIN_PRIORITY_FEE_PER_GAS;
         if (maxFeePerGas < MIN_MAX_FEE_PER_GAS)
             maxFeePerGas = MIN_MAX_FEE_PER_GAS;
 
@@ -620,7 +691,7 @@ contract RitualPredict {
             RETRY_INTERVAL_BLOCKS,
             SCHEDULER_TTL_BLOCKS,
             maxFeePerGas,
-            0, // maxPriorityFeePerGas
+            MIN_PRIORITY_FEE_PER_GAS,
             0, // value forwarded with each execution
             address(this) // payer
         );

@@ -20,6 +20,11 @@ export const predictAbi = [
   },
   {
     "inputs": [],
+    "name": "AlreadySettledMarket",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "BadDuration",
     "type": "error"
   },
@@ -31,6 +36,11 @@ export const predictAbi = [
   {
     "inputs": [],
     "name": "EmptyString",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NotExpired",
     "type": "error"
   },
   {
@@ -140,6 +150,31 @@ export const predictAbi = [
       }
     ],
     "name": "MarketCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "marketId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "caller",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint8",
+        "name": "attemptsMade",
+        "type": "uint8"
+      }
+    ],
+    "name": "MarketExpired",
     "type": "event"
   },
   {
@@ -283,6 +318,25 @@ export const predictAbi = [
         "type": "uint256"
       },
       {
+        "indexed": false,
+        "internalType": "bytes",
+        "name": "reason",
+        "type": "bytes"
+      }
+    ],
+    "name": "ScheduleCancelFailed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "marketId",
+        "type": "uint256"
+      },
+      {
         "indexed": true,
         "internalType": "address",
         "name": "claimant",
@@ -331,6 +385,19 @@ export const predictAbi = [
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "EXPIRY_GRACE_BLOCKS",
+    "outputs": [
+      {
+        "internalType": "uint32",
+        "name": "",
+        "type": "uint32"
       }
     ],
     "stateMutability": "view",
@@ -391,6 +458,19 @@ export const predictAbi = [
   {
     "inputs": [],
     "name": "MIN_MAX_FEE_PER_GAS",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MIN_PRIORITY_FEE_PER_GAS",
     "outputs": [
       {
         "internalType": "uint256",
@@ -598,6 +678,38 @@ export const predictAbi = [
   {
     "inputs": [],
     "name": "executionBalance",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "marketId",
+        "type": "uint256"
+      }
+    ],
+    "name": "expireStuck",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "marketId",
+        "type": "uint256"
+      }
+    ],
+    "name": "expiryBlock",
     "outputs": [
       {
         "internalType": "uint256",

@@ -98,6 +98,46 @@ pnpm test
 
 ---
 
+## What this fork adds
+
+Two changes to the contract itself, both about failures the original has no answer for.
+
+### A market the Scheduler never wakes traps its stakes forever
+
+Every path to `Invalid` runs *inside* `onScheduledResolve`. If the callback never fires,
+the market cannot reach `Invalid` at all: `attempts` stays at 0, `claimWinnings` reverts
+`NotResolved`, `claimRefund` reverts `NotInvalid`, and the pool sits in the contract with
+no way out.
+
+That is not a hypothetical. The repo's own `scripts/fund.ts` documents the mechanism:
+scheduled executions are **skipped**, not cancelled, when the payer's RitualWallet
+balance is short. A market created against an empty execution balance books three
+executions that silently never run, and the booking is only alive for
+`resolveBlock + 2 × 200 + TTL` blocks. After that nothing will ever fire again.
+
+`expireStuck(marketId)` is the way out. It is permissionless — whoever is owed money
+should not need anyone's approval to unstick their own stake — and it only ever turns a
+market nobody can settle into one everybody can refund from. `expiryBlock(marketId)`
+exposes the deadline, which clears the last booked retry, the Scheduler's TTL, and a
+grace margin, so a market that was about to resolve is never expired out from under a
+real result.
+
+The frontend surfaces this: an unsettled market past its deadline shows the reason and an
+**Expire market and open refunds** button.
+
+### Scheduled executions were booked with a zero tip
+
+Ritual Chain drops transactions under 1 gwei of priority fee *silently* — no error, no
+receipt, no nonce consumed. `_scheduleResolution` floored `maxFeePerGas` at 1 gwei but
+passed `0` for the tip, so a booked resolution could simply evaporate with nothing to
+debug. The tip is now floored too, and `maxFeePerGas` covers it.
+
+A failed `cancel()` used to be swallowed by a bare `catch {}`, which leaks the prepaid
+fees for the unused executions with nothing on chain to explain it. It now emits
+`ScheduleCancelFailed`.
+
+---
+
 ## The frontend
 
 `web/` is a Next.js app that talks to the contract directly with viem — market list with
@@ -129,8 +169,8 @@ because it reaches branches a live run cannot produce on demand.
 
 ```bash
 cd hardhat
-pnpm test         # 33 Solidity + 47 TypeScript tests
-pnpm coverage     # 98.93% line coverage on RitualPredict.sol
+pnpm test         # 42 Solidity + 52 TypeScript tests
+pnpm coverage     # 98.32% line coverage on RitualPredict.sol
 pnpm typecheck
 ```
 

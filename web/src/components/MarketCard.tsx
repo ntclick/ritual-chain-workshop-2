@@ -25,6 +25,9 @@ import { predictAbi } from "@/lib/predict-abi";
 
 type Position = { yes: bigint; no: bigint; settled: boolean; claimable: bigint };
 
+/** Actions a card can send. `expireStuck` takes no stake, the others may. */
+type Action = "bet" | "claimWinnings" | "claimRefund" | "expireStuck";
+
 export function MarketCard({
   market,
   wallet,
@@ -45,6 +48,7 @@ export function MarketCard({
   const [side, setSide] = useState<boolean | undefined>();
   const [amount, setAmount] = useState("0.1");
   const [position, setPosition] = useState<Position | undefined>();
+  const [expiryBlock, setExpiryBlock] = useState<bigint | undefined>();
   const tx = useTx();
 
   const { account, publicClient, getWalletClient } = wallet;
@@ -83,7 +87,33 @@ export function MarketCard({
     };
   }, [account, address, market.id, market.state, market.totalYes, market.totalNo, publicClient]);
 
-  async function send(fn: "bet" | "claimWinnings" | "claimRefund") {
+  // Read the deadline from the contract rather than recomputing the formula here, so
+  // the two can never drift apart.
+  useEffect(() => {
+    if (isSettled(market)) {
+      setExpiryBlock(undefined);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const value = (await publicClient.readContract({
+          address,
+          abi: predictAbi,
+          functionName: "expiryBlock",
+          args: [market.id],
+        })) as bigint;
+        if (!cancelled) setExpiryBlock(value);
+      } catch {
+        if (!cancelled) setExpiryBlock(undefined);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, market.id, market.state, publicClient]);
+
+  async function send(fn: Action) {
     const hash = await tx.run(
       async () => {
         const client = getWalletClient();
@@ -294,6 +324,37 @@ export function MarketCard({
         <button className="btn btn-block" disabled={tx.pending} onClick={() => void send("claimRefund")}>
           {tx.pending ? "Confirming…" : `Refund ${ritual(position.claimable)} RITUAL`}
         </button>
+      )}
+
+      {/* Every path to Invalid runs inside the Scheduler callback, so a market whose
+          executions never arrived would otherwise trap its stakes forever. */}
+      {!isSettled(market) && expiryBlock !== undefined && (
+        <div className="banner banner-warn stack" style={{ gap: "0.5rem" }}>
+          {currentBlock >= expiryBlock ? (
+            <>
+              <span>
+                The Scheduler never settled this market
+                {market.attempts > 0 ? ` after ${market.attempts} attempt(s)` : ""}. Anyone
+                can now expire it so every stake becomes refundable.
+              </span>
+              <button
+                className="btn"
+                disabled={!account || tx.pending}
+                onClick={() => void send("expireStuck")}
+              >
+                {tx.pending ? "Confirming…" : "Expire market and open refunds"}
+              </button>
+            </>
+          ) : (
+            market.attempts >= maxAttempts && (
+              <span>
+                All {maxAttempts} attempts are spent. If nothing settles it, this market
+                can be expired for refunds at block {expiryBlock.toString()} (
+                {blocksUntil(expiryBlock, currentBlock, blockTimeMs)}).
+              </span>
+            )
+          )}
+        </div>
       )}
 
       {tx.error && <p className="banner banner-error">{tx.error}</p>}

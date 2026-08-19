@@ -512,6 +512,155 @@ contract RitualPredictTest is Test {
         assertEq(uint8(predict.getMarket(marketId).outcome), uint8(expected));
     }
 
+    // ───────────────────── abandoned markets (extension) ─────────────────
+
+    /**
+     * The case the safety valve exists for: the Scheduler never calls back at all.
+     *
+     * No attempt is fired here, which is exactly what happens on chain when the payer's
+     * RitualWallet balance is short — executions are skipped, not cancelled. Without
+     * expireStuck the stakes below are unreachable forever.
+     */
+    function test_ExpireStuckRescuesAMarketTheSchedulerNeverRan() public {
+        uint256 marketId = _newMarket();
+        _bet(marketId, alice, true, 1 ether);
+        _bet(marketId, bob, false, 3 ether);
+
+        // Prove the money really is stuck before the deadline.
+        vm.roll(predict.getMarket(marketId).resolveBlock + 1);
+        vm.prank(alice);
+        vm.expectRevert(RitualPredict.NotInvalid.selector);
+        predict.claimRefund(marketId);
+
+        vm.roll(predict.expiryBlock(marketId));
+        predict.expireStuck(marketId);
+
+        RitualPredict.Market memory m = predict.getMarket(marketId);
+        assertEq(uint8(m.state), uint8(RitualPredict.MarketState.Invalid));
+        assertEq(m.attempts, 0, "no attempt ever ran");
+        assertEq(m.invalidReason, "resolution never completed");
+
+        vm.prank(alice);
+        predict.claimRefund(marketId);
+        vm.prank(bob);
+        predict.claimRefund(marketId);
+        assertEq(alice.balance, 1 ether);
+        assertEq(bob.balance, 3 ether);
+    }
+
+    function test_ExpireStuckCancelsTheSchedule() public {
+        uint256 marketId = _newMarket();
+        _bet(marketId, alice, true, 1 ether);
+        uint256 scheduleId = predict.getMarket(marketId).scheduleId;
+        assertEq(scheduler.getCallState(scheduleId), 0, "booked before");
+
+        vm.roll(predict.expiryBlock(marketId));
+        predict.expireStuck(marketId);
+
+        assertEq(scheduler.getCallState(scheduleId), 3, "should be cancelled");
+    }
+
+    function test_ExpireStuckIsPermissionless() public {
+        uint256 marketId = _newMarket();
+        _bet(marketId, alice, true, 1 ether);
+        vm.roll(predict.expiryBlock(marketId));
+
+        // carol never touched this market
+        vm.prank(carol);
+        predict.expireStuck(marketId);
+
+        assertEq(
+            uint8(predict.getMarket(marketId).state),
+            uint8(RitualPredict.MarketState.Invalid)
+        );
+    }
+
+    function test_ExpireStuckRejectedOneBlockEarly() public {
+        uint256 marketId = _newMarket();
+        _bet(marketId, alice, true, 1 ether);
+
+        vm.roll(predict.expiryBlock(marketId) - 1);
+        vm.expectRevert(RitualPredict.NotExpired.selector);
+        predict.expireStuck(marketId);
+    }
+
+    function test_ExpireStuckRejectedOnASettledMarket() public {
+        uint256 marketId = _newMarket();
+        _bet(marketId, alice, true, 1 ether);
+        _settle(marketId);
+
+        vm.roll(predict.expiryBlock(marketId));
+        vm.expectRevert(RitualPredict.AlreadySettledMarket.selector);
+        predict.expireStuck(marketId);
+    }
+
+    function test_ExpireStuckRejectedOnAnAlreadyInvalidMarket() public {
+        http.setHttpResponse(503, BODY, "");
+        uint256 marketId = _newMarket();
+        _bet(marketId, alice, true, 1 ether);
+        _rollToResolve(marketId);
+        for (uint256 i = 0; i < predict.MAX_ATTEMPTS(); i++) _fire(marketId, i);
+
+        vm.roll(predict.expiryBlock(marketId));
+        vm.expectRevert(RitualPredict.AlreadySettledMarket.selector);
+        predict.expireStuck(marketId);
+    }
+
+    /// A schedule that dies part-way through is rescued too, and the event says so.
+    function test_ExpireStuckAfterSomeAttemptsRan() public {
+        http.setHttpResponse(500, BODY, "");
+        uint256 marketId = _newMarket();
+        _bet(marketId, alice, true, 2 ether);
+        _rollToResolve(marketId);
+        _fire(marketId, 0); // one attempt lands, then the schedule goes quiet
+
+        vm.roll(predict.expiryBlock(marketId));
+        vm.expectEmit(true, true, false, true, address(predict));
+        emit RitualPredict.MarketExpired(marketId, address(this), 1);
+        predict.expireStuck(marketId);
+
+        vm.prank(alice);
+        predict.claimRefund(marketId);
+        assertEq(alice.balance, 2 ether);
+    }
+
+    /// The deadline must clear the last retry *and* the Scheduler's TTL, plus grace.
+    function test_ExpiryBlockClearsEveryBookedAttempt() public {
+        uint256 marketId = _newMarket();
+        RitualPredict.Market memory m = predict.getMarket(marketId);
+
+        uint256 lastAttempt = uint256(m.resolveBlock) +
+            uint256(predict.MAX_ATTEMPTS() - 1) *
+            predict.RETRY_INTERVAL_BLOCKS();
+
+        assertGt(predict.expiryBlock(marketId), lastAttempt + predict.SCHEDULER_TTL_BLOCKS());
+        assertEq(
+            predict.expiryBlock(marketId),
+            lastAttempt + predict.SCHEDULER_TTL_BLOCKS() + predict.EXPIRY_GRACE_BLOCKS()
+        );
+    }
+
+    // ───────────────────── scheduled fee floor (extension) ───────────────
+
+    /**
+     * Ritual Chain drops transactions under 1 gwei of priority fee silently. A booked
+     * execution with a zero tip is a market that may simply never resolve, with no
+     * error anywhere to explain it.
+     */
+    function test_ScheduleBooksATipAboveTheMempoolFloor() public {
+        uint256 marketId = _newMarket();
+        MockScheduler.Call memory call = scheduler.getCall(
+            predict.getMarket(marketId).scheduleId
+        );
+
+        assertGe(call.maxPriorityFeePerGas, 1 gwei, "tip below the silent-drop floor");
+        assertGe(
+            call.maxFeePerGas,
+            call.maxPriorityFeePerGas,
+            "maxFeePerGas must cover the tip"
+        );
+    }
+
     // ──────────────────────── execution funding ──────────────────────────
 
     function test_FundExecutionPrepaysTheRitualWallet() public {

@@ -937,6 +937,137 @@ describe("RitualPredict", async () => {
     });
   });
 
+  // ──────────────────── abandoned markets (extension) ─────────────────────
+
+  describe("expireStuck", () => {
+    /** Mine to the block from which the market counts as abandoned. */
+    async function mineToExpiry(predict: Predict, marketId: bigint) {
+      const target = (await predict.read.expiryBlock([marketId])) as bigint;
+      const current = await publicClient.getBlockNumber();
+      if (target > current) await networkHelpers.mine(Number(target - current));
+    }
+
+    it("frees stakes from a market the Scheduler never ran", async () => {
+      const predict = await fresh();
+      const marketId = await createMarket(predict);
+      await predict.write.bet([marketId, true], {
+        value: parseEther("1"),
+        account: alice.account,
+      });
+      await predict.write.bet([marketId, false], {
+        value: parseEther("3"),
+        account: bob.account,
+      });
+
+      // Nothing is ever fired — the schedule is booked and then silently skipped.
+      await mineToResolve(predict, marketId);
+      await viem.assertions.revertWithCustomError(
+        predict.write.claimRefund([marketId], { account: alice.account }),
+        predict,
+        "NotInvalid",
+      );
+
+      await mineToExpiry(predict, marketId);
+      await predict.write.expireStuck([marketId], { account: carol.account });
+
+      const market = await predict.read.getMarket([marketId]);
+      assert.equal(market.state, STATE.Invalid);
+      assert.equal(market.attempts, 0);
+      assert.equal(market.invalidReason, "resolution never completed");
+
+      await viem.assertions.balancesHaveChanged(
+        predict.write.claimRefund([marketId], { account: alice.account }),
+        [{ address: alice.account.address, amount: parseEther("1") }],
+      );
+      await viem.assertions.balancesHaveChanged(
+        predict.write.claimRefund([marketId], { account: bob.account }),
+        [{ address: bob.account.address, amount: parseEther("3") }],
+      );
+
+      // The whole pool left the contract; nothing stayed trapped.
+      assert.equal(await publicClient.getBalance({ address: predict.address }), 0n);
+    });
+
+    it("refuses before the last booked attempt could still have landed", async () => {
+      const predict = await fresh();
+      const marketId = await createMarket(predict);
+      await predict.write.bet([marketId, true], {
+        value: parseEther("1"),
+        account: alice.account,
+      });
+
+      const expiry = (await predict.read.expiryBlock([marketId])) as bigint;
+      const current = await publicClient.getBlockNumber();
+      await networkHelpers.mine(Number(expiry - current - 2n));
+
+      await viem.assertions.revertWithCustomError(
+        predict.write.expireStuck([marketId], { account: carol.account }),
+        predict,
+        "NotExpired",
+      );
+    });
+
+    it("refuses on a market that already settled", async () => {
+      const predict = await fresh();
+      const marketId = await createMarket(predict);
+      await predict.write.bet([marketId, true], {
+        value: parseEther("1"),
+        account: alice.account,
+      });
+      await settle(predict, marketId);
+      await mineToExpiry(predict, marketId);
+
+      await viem.assertions.revertWithCustomError(
+        predict.write.expireStuck([marketId], { account: carol.account }),
+        predict,
+        "AlreadySettledMarket",
+      );
+    });
+
+    it("releases the still-booked executions back to the Scheduler", async () => {
+      const predict = await fresh();
+      const marketId = await createMarket(predict);
+      await predict.write.bet([marketId, true], {
+        value: parseEther("1"),
+        account: alice.account,
+      });
+      await mineToExpiry(predict, marketId);
+      await predict.write.expireStuck([marketId]);
+
+      const market = await predict.read.getMarket([marketId]);
+
+      // The cancel is best-effort, so assert it did not quietly fail before checking
+      // the Scheduler's own view of the call.
+      const failures = await publicClient.getContractEvents({
+        address: predict.address,
+        abi: predict.abi,
+        eventName: "ScheduleCancelFailed",
+        fromBlock: 0n,
+        strict: true,
+      });
+      assert.deepEqual(failures, [], "cancel should not have failed");
+
+      // 3 = CANCELLED
+      assert.equal(await (await scheduler()).read.getCallState([market.scheduleId]), 3);
+    });
+  });
+
+  describe("scheduled fee floor", () => {
+    it("books a priority fee above the silent-drop threshold", async () => {
+      const predict = await fresh();
+      const marketId = await createMarket(predict);
+      const market = await predict.read.getMarket([marketId]);
+      const call = await (await scheduler()).read.getCall([market.scheduleId]);
+
+      const ONE_GWEI = 1_000_000_000n;
+      assert.ok(
+        call.maxPriorityFeePerGas >= ONE_GWEI,
+        `tip ${call.maxPriorityFeePerGas} is under the 1 gwei mempool floor`,
+      );
+      assert.ok(call.maxFeePerGas >= call.maxPriorityFeePerGas);
+    });
+  });
+
   // ──────────────────────────────── views ─────────────────────────────────
 
   describe("getMarkets", () => {

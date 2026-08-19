@@ -27,7 +27,7 @@ scripts/
 ```bash
 cp .env.example .env                            # RITUAL_PRIVATE_KEY, funded from the faucet
 
-pnpm test                                       # 33 Solidity + 47 TypeScript tests
+pnpm test                                       # 42 Solidity + 52 TypeScript tests
 pnpm test:solidity                              # Solidity only
 pnpm test:e2e                                   # TypeScript only
 pnpm coverage                                   # same, with a Solidity coverage report
