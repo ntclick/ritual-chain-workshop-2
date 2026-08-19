@@ -41,6 +41,26 @@ export function chainById(id: number | undefined) {
   return SUPPORTED_CHAINS.find((chain) => chain.id === id);
 }
 
+/**
+ * Which chain to open on when the visitor has no stored preference.
+ *
+ * A deployed build must not default to a Hardhat node on 127.0.0.1 — that address means
+ * "my own machine" to whoever loads the page, so every visitor would get a dead RPC.
+ * `NEXT_PUBLIC_DEFAULT_CHAIN_ID` decides it; failing that, anything not served from
+ * localhost is assumed to be a real deployment.
+ *
+ * Only ever called from an effect, never during render: the server cannot know the
+ * hostname the client will see, and disagreeing about it would be a hydration mismatch.
+ */
+export function defaultChain() {
+  const fromEnv = chainById(Number(process.env.NEXT_PUBLIC_DEFAULT_CHAIN_ID));
+  if (fromEnv) return fromEnv;
+
+  const host = typeof window === "undefined" ? "" : window.location.hostname;
+  const isLocal = host === "localhost" || host === "127.0.0.1" || host === "";
+  return isLocal ? localChain : ritualChain;
+}
+
 export function explorerTx(chainId: number | undefined, hash: string): string | undefined {
   const url = chainById(chainId)?.blockExplorers?.default.url;
   return url ? `${url}/tx/${hash}` : undefined;

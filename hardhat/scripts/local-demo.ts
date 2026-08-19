@@ -41,6 +41,19 @@ if (wallet === undefined) throw new Error("No account available on this network.
 console.log("── Etching the Ritual system contracts ───────────────────");
 
 const testClient = await viem.getTestClient();
+
+// Produce a block every blockTimeMs, so deadlines actually arrive.
+//
+// A local node only mines when a transaction shows up. Without this the chain sits at
+// one height forever: closeBlock never passes, a market stays Open no matter how long
+// you wait, and every countdown in the UI is fiction. Hardhat takes this in
+// milliseconds, which is why it goes through the raw request rather than viem's
+// setIntervalMining wrapper and its seconds.
+await testClient.request({
+  method: "evm_setIntervalMining" as never,
+  params: [Number(BLOCK_TIME_MS)] as never,
+});
+console.log(`  mining every ${BLOCK_TIME_MS}ms so deadlines actually arrive`);
 for (const [name, address] of Object.entries(RITUAL_ADDRESSES)) {
   const deployed = await viem.deployContract(name as keyof typeof RITUAL_ADDRESSES);
   const code = await publicClient.getCode({ address: deployed.address });
@@ -90,13 +103,23 @@ console.log("── Demo market ────────────────
 const bettingSeconds = BigInt(process.env.BETTING_SECONDS ?? "60");
 const resolveDelaySeconds = BigInt(process.env.RESOLVE_DELAY_SECONDS ?? "30");
 
+// Every field is overridable, so a market with a real question and a real target
+// can be created without editing this file.
+const question = process.env.QUESTION ?? DEMO_MARKET.question;
+const jsonPath = process.env.JSON_PATH ?? DEMO_MARKET.jsonPath;
+const target = BigInt(process.env.TARGET ?? DEMO_MARKET.target);
+const comparatorKey = (process.env.COMPARATOR ?? DEMO_MARKET.comparator) as keyof typeof COMPARATOR;
+if (COMPARATOR[comparatorKey] === undefined) {
+  throw new Error(`COMPARATOR must be one of: ${Object.keys(COMPARATOR).join(", ")}`);
+}
+
 await predict.write.createMarket([
   {
-    question: DEMO_MARKET.question,
+    question,
     oracleUrl,
-    jsonPath: DEMO_MARKET.jsonPath,
-    target: BigInt(DEMO_MARKET.target),
-    comparator: COMPARATOR[DEMO_MARKET.comparator],
+    jsonPath,
+    target,
+    comparator: COMPARATOR[comparatorKey],
     bettingSeconds,
     resolveDelaySeconds,
   },
@@ -105,8 +128,8 @@ await predict.write.createMarket([
 const marketId = await predict.read.marketCount();
 const market = await predict.read.getMarket([marketId]);
 
-console.log(`  market #${marketId}           ${DEMO_MARKET.question}`);
-console.log(`  rule                 observed >= ${DEMO_MARKET.target}`);
+console.log(`  market #${marketId}           ${question}`);
+console.log(`  rule                 observed ${comparatorKey.toUpperCase()} ${target}`);
 console.log(`  betting closes       block ${market.closeBlock}`);
 console.log(`  resolves at          block ${market.resolveBlock}`);
 

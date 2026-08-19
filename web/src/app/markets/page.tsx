@@ -10,6 +10,9 @@ import { usePredict, usePredictAddress } from "@/hooks/usePredict";
 import { useWallet } from "@/hooks/useWallet";
 import { isSettled, ritual, STATE, type Market } from "@/lib/market";
 
+/** Stand-in while the preview board is showing and no contract is configured. */
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+
 type Filter = "all" | "open" | "resolved" | "invalid";
 
 const FILTERS: { id: Filter; label: string; match: (m: Market) => boolean }[] = [
@@ -42,7 +45,8 @@ export default function Home() {
       <main className="wrap">
         <Header wallet={wallet} address={address} onAddressChange={setAddress} />
 
-      {!address ? (
+      {/* The preview board is more use than a setup card, so it wins when it is showing. */}
+      {!address && !data?.isDemo ? (
         <section className="card stack">
           <div>
             <h2 className="card-title">No contract configured</h2>
@@ -99,9 +103,20 @@ npx hardhat run scripts/local-demo.ts --network localhost   # terminal 2`}</pre>
             </div>
           )}
 
-          {error && <p className="banner banner-error">{error}</p>}
+          {data?.isDemo && (
+            <p className="banner banner-warn">
+              <strong>Preview data.</strong> These markets are samples, not read from any
+              chain — there is no live deployment to point at. Betting and claiming are
+              disabled. Run the stack locally, or paste a deployed address above, to see
+              real ones.
+            </p>
+          )}
 
-          <CreateMarketForm wallet={wallet} address={address} onCreated={refresh} />
+          {error && !data?.isDemo && <p className="banner banner-error">{error}</p>}
+
+          {address && (
+            <CreateMarketForm wallet={wallet} address={address} onCreated={refresh} />
+          )}
 
           {markets.length > 0 && (
             <div className="filters">
@@ -144,10 +159,11 @@ npx hardhat run scripts/local-demo.ts --network localhost   # terminal 2`}</pre>
                 key={market.id.toString()}
                 market={market}
                 wallet={wallet}
-                address={address}
+                address={address ?? ZERO_ADDRESS}
                 currentBlock={data!.currentBlock}
                 blockTimeMs={data!.blockTimeMs}
                 observedAt={data!.observedAt}
+                isDemo={data!.isDemo}
                 maxAttempts={data!.maxAttempts}
                 onChanged={refresh}
               />

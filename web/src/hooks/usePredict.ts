@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isAddress } from "viem";
 
+import { DEMO_BLOCK, DEMO_MARKETS } from "@/lib/demo";
 import type { Market } from "@/lib/market";
 import { predictAbi } from "@/lib/predict-abi";
 import type { useWallet } from "./useWallet";
@@ -11,6 +12,22 @@ const STORAGE_KEY = "ritual-predict:address";
 
 /** No new block for this long and the clock estimates stop meaning anything. */
 const IDLE_AFTER_MS = 20_000;
+
+/**
+ * Sample data stands in only when there is genuinely nothing to read: no contract
+ * configured, or the configured one is unreachable. A successful read always wins, so a
+ * working deployment can never be masked by the preview.
+ */
+const DEMO_DATA: PredictData = {
+  markets: DEMO_MARKETS,
+  currentBlock: DEMO_BLOCK,
+  observedAt: 0,
+  chainIdle: false,
+  isDemo: true,
+  blockTimeMs: 195n,
+  executionBalance: 500_000_000_000_000_000n,
+  maxAttempts: 3,
+};
 
 /**
  * The deployed market contract.
@@ -51,6 +68,8 @@ export type PredictData = {
   observedAt: number;
   /** The chain has not produced a block for a while — countdowns are fiction. */
   chainIdle: boolean;
+  /** These are sample markets, not chain data. Never true when a read succeeded. */
+  isDemo: boolean;
   blockTimeMs: bigint;
   executionBalance: bigint;
   maxAttempts: number;
@@ -85,7 +104,7 @@ export function usePredict(
 
   const refresh = useCallback(async () => {
     if (!address) {
-      setData(undefined);
+      setData(DEMO_DATA);
       setLoading(false);
       return;
     }
@@ -119,6 +138,7 @@ export function usePredict(
         markets: markets as unknown as Market[],
         currentBlock,
         observedAt: lastBlock.current.at,
+        isDemo: false,
         chainIdle: seenAt - lastBlock.current.at > IDLE_AFTER_MS,
         blockTimeMs: blockTimeMs as bigint,
         executionBalance: executionBalance as bigint,
@@ -130,6 +150,7 @@ export function usePredict(
       // Name the chain being read. The usual cause is viewing Ritual Chain — whose
       // public RPC is currently down — while the contract lives on the local node, and
       // an unnamed "network unreachable" gives no hint which of the two to change.
+      setData((prev) => (prev && !prev.isDemo ? prev : DEMO_DATA));
       setError(
         `Could not read ${address} on ${chain.name}. Either the contract is not ` +
           `deployed on that network, or its RPC is unreachable. Check the network selector above.`,

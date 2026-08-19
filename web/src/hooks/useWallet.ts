@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { chainById } from "@/lib/chains";
+import { chainById, defaultChain } from "@/lib/chains";
 import {
   DEFAULT_CHAIN,
   getProvider,
@@ -32,9 +32,15 @@ export function useWallet() {
   const [error, setError] = useState<string | undefined>();
   const [hasWallet, setHasWallet] = useState(false);
 
+  // Resolved here rather than in useState so the server and the first client render
+  // agree; defaultChain() reads the hostname, which the server cannot know.
   useEffect(() => {
     const stored = window.localStorage.getItem(CHAIN_KEY);
-    if (stored && chainById(Number(stored))) setReadChainId(Number(stored));
+    if (stored && chainById(Number(stored))) {
+      setReadChainId(Number(stored));
+      return;
+    }
+    setReadChainId(defaultChain().id);
   }, []);
 
   useEffect(() => {

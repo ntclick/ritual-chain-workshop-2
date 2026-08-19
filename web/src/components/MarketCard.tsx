@@ -35,6 +35,7 @@ export function MarketCard({
   currentBlock,
   blockTimeMs,
   observedAt,
+  isDemo,
   maxAttempts,
   onChanged,
 }: {
@@ -44,6 +45,7 @@ export function MarketCard({
   currentBlock: bigint;
   blockTimeMs: bigint;
   observedAt: number;
+  isDemo: boolean;
   maxAttempts: number;
   onChanged: () => void;
 }) {
@@ -60,7 +62,7 @@ export function MarketCard({
   const settled = isSettled(market);
 
   useEffect(() => {
-    if (!account) {
+    if (!account || isDemo) {
       setPosition(undefined);
       return;
     }
@@ -88,12 +90,12 @@ export function MarketCard({
     return () => {
       cancelled = true;
     };
-  }, [account, address, market.id, market.state, market.totalYes, market.totalNo, publicClient]);
+  }, [account, isDemo, address, market.id, market.state, market.totalYes, market.totalNo, publicClient]);
 
   // Read the deadline from the contract rather than recomputing the formula here, so
   // the two can never drift apart.
   useEffect(() => {
-    if (settled) {
+    if (settled || isDemo) {
       setExpiryBlock(undefined);
       return;
     }
@@ -114,7 +116,7 @@ export function MarketCard({
     return () => {
       cancelled = true;
     };
-  }, [address, market.id, settled, publicClient]);
+  }, [address, isDemo, market.id, settled, publicClient]);
 
   async function send(fn: Action) {
     const hash = await tx.run(
@@ -165,6 +167,8 @@ export function MarketCard({
 
   const explorer = tx.hash ? explorerTx(wallet.chainId, tx.hash) : undefined;
   const canClaim = position && !position.settled && position.claimable > 0n;
+  // Sample markets exist on no chain, so there is nothing to sign against.
+  const writable = canTransact(wallet) && !isDemo;
 
   return (
     <article className="card market">
@@ -237,13 +241,17 @@ export function MarketCard({
             />
             <button
               className="btn btn-primary"
-              disabled={!canTransact(wallet) || side === undefined || stake <= 0n || tx.pending}
+              disabled={!writable || side === undefined || stake <= 0n || tx.pending}
               onClick={() => void send("bet")}
             >
               {tx.pending ? "Signing…" : "Stake"}
             </button>
           </div>
-          <NetworkGate wallet={wallet} />
+          {isDemo ? (
+            <p className="hint">Sample market — connect to a live deployment to bet.</p>
+          ) : (
+            <NetworkGate wallet={wallet} />
+          )}
         </div>
       )}
 
@@ -263,7 +271,7 @@ export function MarketCard({
       {market.state === STATE.Resolved && canClaim && (
         <button
           className="btn btn-primary btn-block"
-          disabled={tx.pending || !canTransact(wallet)}
+          disabled={tx.pending || !writable}
           onClick={() => void send("claimWinnings")}
         >
           {tx.pending ? "Signing…" : `Claim ${ritual(position!.claimable)} RITUAL`}
@@ -273,7 +281,7 @@ export function MarketCard({
       {market.state === STATE.Invalid && canClaim && (
         <button
           className="btn btn-block"
-          disabled={tx.pending || !canTransact(wallet)}
+          disabled={tx.pending || !writable}
           onClick={() => void send("claimRefund")}
         >
           {tx.pending ? "Signing…" : `Refund ${ritual(position!.claimable)} RITUAL`}
@@ -291,7 +299,7 @@ export function MarketCard({
           </span>
           <button
             className="btn btn-sm"
-            disabled={!canTransact(wallet) || tx.pending}
+            disabled={!writable || tx.pending}
             onClick={() => void send("expireStuck")}
           >
             {tx.pending ? "Signing…" : "Expire and open refunds"}
