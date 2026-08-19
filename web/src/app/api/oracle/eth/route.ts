@@ -18,6 +18,16 @@ export const revalidate = 0;
 
 const FALLBACK_PRICE = 4200;
 
+/**
+ * A CoinGecko key, if one is configured.
+ *
+ * Read without a NEXT_PUBLIC_ prefix on purpose. That prefix inlines a value into the
+ * JavaScript sent to the browser, which would publish the key to anyone who opens the
+ * page. This route runs on the server, so the key never leaves it. The free tier works
+ * without one; the key only raises the rate limit.
+ */
+const COINGECKO_KEY = process.env.COINGECKO_API_KEY;
+
 async function livePrice(): Promise<{ price: number; source: string }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 2_500);
@@ -25,7 +35,11 @@ async function livePrice(): Promise<{ price: number; source: string }> {
   try {
     const response = await fetch(
       "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
-      { signal: controller.signal, cache: "no-store" },
+      {
+        signal: controller.signal,
+        cache: "no-store",
+        headers: COINGECKO_KEY ? { "x-cg-demo-api-key": COINGECKO_KEY } : undefined,
+      },
     );
     if (!response.ok) throw new Error(`upstream returned ${response.status}`);
 
@@ -35,7 +49,7 @@ async function livePrice(): Promise<{ price: number; source: string }> {
       throw new Error("upstream payload had no numeric price");
     }
 
-    return { price: Math.floor(usd), source: "coingecko" };
+    return { price: Math.floor(usd), source: COINGECKO_KEY ? "coingecko-keyed" : "coingecko" };
   } finally {
     clearTimeout(timeout);
   }
