@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#0a0a0b" />
+  <!-- The pari-mutuel split: YES above, NO below. -->
+  <rect x="6" y="9" width="20" height="5" rx="2.5" fill="#34d399" />
+  <rect x="6" y="18" width="20" height="5" rx="2.5" fill="#fb7185" />
+  <circle cx="16" cy="16" r="2" fill="#ff5c1a" />
+</svg>

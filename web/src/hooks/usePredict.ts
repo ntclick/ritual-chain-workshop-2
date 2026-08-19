@@ -58,7 +58,7 @@ export function usePredict(
   address: `0x${string}` | undefined,
   intervalMs = 3_000,
 ) {
-  const { publicClient } = wallet;
+  const { publicClient, chain } = wallet;
   const [data, setData] = useState<PredictData | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
@@ -90,14 +90,19 @@ export function usePredict(
       });
       setError(undefined);
     } catch (cause) {
+      // Name the chain. Reads follow the wallet's network, so the usual cause is a
+      // wallet sitting on Ritual Chain — whose public RPC is currently down — while the
+      // contract is actually deployed on the local node, and the old message gave no
+      // hint which of the two to go and change.
       setError(
-        `Could not read the contract at ${address}. Is the address right and the network reachable?`,
+        `Could not read ${address} on ${chain.name}. Either the contract is not ` +
+          `deployed on that network, or its RPC is unreachable. Check the network selector above.`,
       );
       void cause;
     } finally {
       setLoading(false);
     }
-  }, [address, publicClient]);
+  }, [address, publicClient, chain]);
 
   useEffect(() => {
     setLoading(true);
