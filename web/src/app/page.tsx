@@ -5,93 +5,102 @@ import { Header } from "@/components/Header";
 import { MarketCard } from "@/components/MarketCard";
 import { usePredict, usePredictAddress } from "@/hooks/usePredict";
 import { useWallet } from "@/hooks/useWallet";
-import { ritual } from "@/lib/market";
+import { ritual, STATE } from "@/lib/market";
 
 export default function Home() {
   const wallet = useWallet();
   const { address, setAddress } = usePredictAddress();
   const { data, error, loading, refresh } = usePredict(wallet, address);
 
+  const openCount = data?.markets.filter((m) => m.state === STATE.Open).length ?? 0;
+
   return (
     <main className="wrap">
       <Header wallet={wallet} address={address} onAddressChange={setAddress} />
 
       {!address ? (
-        <section className="panel">
-          <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Point the app at a deployment</h2>
-          <p className="muted" style={{ fontSize: "0.9rem" }}>
-            Set <span className="mono">NEXT_PUBLIC_PREDICT_ADDRESS</span> in{" "}
-            <span className="mono">web/.env.local</span>, or paste an address with{" "}
-            <strong>Set address</strong> above. Deploy one with:
-          </p>
-          <pre
-            className="mono"
-            style={{
-              background: "var(--bg)",
-              border: "1px solid var(--line)",
-              borderRadius: 8,
-              padding: "0.8rem",
-              overflowX: "auto",
-            }}
-          >
-            {`cd hardhat\nnpx hardhat node                      # terminal 1\npnpm demo:local                       # terminal 2`}
-          </pre>
+        <section className="card stack">
+          <div>
+            <h2 className="card-title">Point the app at a deployment</h2>
+            <p className="card-sub">
+              Set <code>NEXT_PUBLIC_PREDICT_ADDRESS</code> in <code>web/.env.local</code>, or
+              paste an address with <strong>Set address</strong> above. To deploy one on a
+              local node:
+            </p>
+          </div>
+          <pre>{`cd hardhat
+npx hardhat node                                            # terminal 1
+npx hardhat run scripts/local-demo.ts --network localhost   # terminal 2`}</pre>
         </section>
       ) : (
-        <>
+        <div className="stack">
           {data && (
-            <div className="panel between" style={{ marginBottom: "1rem", fontSize: "0.86rem" }}>
-              <span>
-                <span className="muted">Block</span>{" "}
-                <span className="mono">{data.currentBlock.toString()}</span>
-              </span>
-              <span>
-                <span className="muted">Markets</span> {data.markets.length}
-              </span>
-              <span>
-                <span className="muted">Prepaid execution</span>{" "}
-                <span className={data.executionBalance === 0n ? "" : "mono"}>
+            <div className="stats">
+              <div className="stat">
+                <span className="stat-label">Block</span>
+                <span className="stat-value">
+                  <span className="live" />
+                  {data.currentBlock.toString()}
+                </span>
+              </div>
+              <div className="stat">
+                <span className="stat-label">Markets</span>
+                <span className="stat-value">
+                  {data.markets.length}
+                  {openCount > 0 && <span className="faint"> · {openCount} open</span>}
+                </span>
+              </div>
+              <div className="stat">
+                <span className="stat-label">Prepaid execution</span>
+                <span className="stat-value">
                   {data.executionBalance === 0n ? (
-                    <strong style={{ color: "var(--no)" }}>0 — resolution will be skipped</strong>
+                    <span style={{ color: "var(--no)" }}>0 — resolution skipped</span>
                   ) : (
                     `${ritual(data.executionBalance)} RITUAL`
                   )}
                 </span>
-              </span>
-              <button onClick={() => void refresh()}>Refresh</button>
+              </div>
+              <button
+                className="btn btn-sm btn-ghost"
+                style={{ marginLeft: "auto" }}
+                onClick={() => void refresh()}
+              >
+                Refresh
+              </button>
             </div>
           )}
 
-          {error && <p className="error" style={{ marginBottom: "1rem" }}>{error}</p>}
+          {error && <p className="banner banner-error">{error}</p>}
 
-          <div style={{ marginBottom: "1rem" }}>
-            <CreateMarketForm wallet={wallet} address={address} onCreated={refresh} />
-          </div>
+          <CreateMarketForm wallet={wallet} address={address} onCreated={refresh} />
 
-          {loading && !data && <p className="muted">Loading markets…</p>}
-
-          {data && data.markets.length === 0 && (
-            <p className="muted">No markets yet. Create the first one.</p>
+          {loading && !data && (
+            <>
+              <div className="skeleton" />
+              <div className="skeleton" />
+            </>
           )}
 
-          <div className="grid">
-            {data?.markets.map((market) => (
-              <MarketCard
-                key={market.id.toString()}
-                market={market}
-                wallet={wallet}
-                address={address}
-                currentBlock={data.currentBlock}
-                blockTimeMs={data.blockTimeMs}
-                maxAttempts={data.maxAttempts}
-                onChanged={refresh}
-              />
-            ))}
-          </div>
-        </>
+          {data && data.markets.length === 0 && (
+            <p className="empty">No markets yet. Create the first one.</p>
+          )}
+
+          {data?.markets.map((market) => (
+            <MarketCard
+              key={market.id.toString()}
+              market={market}
+              wallet={wallet}
+              address={address}
+              currentBlock={data.currentBlock}
+              blockTimeMs={data.blockTimeMs}
+              maxAttempts={data.maxAttempts}
+              onChanged={refresh}
+            />
+          ))}
+        </div>
       )}
 
-      <footer className="muted" style={{ marginTop: "2.5rem", fontSize: "0.82rem" }}>
+      <footer className="site">
         Resolution is driven by the Ritual Scheduler, not by this page. Markets settle
         whether or not anyone has it open.
       </footer>

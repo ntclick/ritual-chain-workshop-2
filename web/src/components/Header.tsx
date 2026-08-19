@@ -30,14 +30,13 @@ export function Header({
   }
 
   return (
-    <header style={{ marginBottom: "1.5rem" }}>
-      <div className="between" style={{ marginBottom: "0.9rem" }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: "1.5rem", letterSpacing: "-0.02em" }}>
-            Ritual Predict
-          </h1>
-          <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.9rem" }}>
-            Markets that resolve themselves. No keeper, no cron, no external bot.
+    <header className="stack" style={{ marginBottom: "1.5rem" }}>
+      <div className="masthead">
+        <div className="brand">
+          <h1>Ritual Predict</h1>
+          <p>
+            Binary markets that settle themselves. The Scheduler wakes the contract, a TEE
+            reads the oracle, and the pool pays out — no keeper, no cron, no external bot.
           </p>
         </div>
 
@@ -61,28 +60,29 @@ export function Header({
           </select>
 
           {wallet.account ? (
-            <span className="badge mono" title={wallet.account}>
+            <span className="badge badge-id" title={wallet.account}>
+              <span className="live" />
               {shortAddress(wallet.account)}
             </span>
           ) : (
-            <button className="primary" onClick={() => void wallet.connect()} disabled={wallet.connecting}>
+            <button
+              className="btn btn-primary"
+              onClick={() => void wallet.connect()}
+              disabled={wallet.connecting}
+            >
               {wallet.connecting ? "Connecting…" : "Connect wallet"}
             </button>
           )}
         </div>
       </div>
 
-      <div className="panel row" style={{ justifyContent: "space-between" }}>
-        <div className="row" style={{ gap: "0.5rem" }}>
-          <span className="muted" style={{ fontSize: "0.85rem" }}>
-            Contract
-          </span>
+      <div className="addressbar">
+        <div className="row" style={{ gap: "0.55rem", minWidth: 0 }}>
+          <span className="stat-label">Contract</span>
           {address ? (
             <span className="mono break">{address}</span>
           ) : (
-            <span className="muted" style={{ fontSize: "0.85rem" }}>
-              not set
-            </span>
+            <span className="faint">not set</span>
           )}
         </div>
 
@@ -94,18 +94,24 @@ export function Header({
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && save()}
-              style={{ flex: "1 1 20rem", borderColor: invalid ? "var(--no)" : undefined }}
+              style={{ flex: "1 1 18rem", borderColor: invalid ? "var(--no)" : undefined }}
             />
-            <button onClick={save}>Save</button>
-            <button onClick={() => setEditing(false)}>Cancel</button>
+            <button className="btn btn-sm" onClick={save}>
+              Save
+            </button>
+            <button className="btn btn-sm btn-ghost" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
           </div>
         ) : (
-          <button onClick={() => setEditing(true)}>{address ? "Change" : "Set address"}</button>
+          <button className="btn btn-sm" onClick={() => setEditing(true)}>
+            {address ? "Change" : "Set address"}
+          </button>
         )}
       </div>
 
       {wallet.account && !wallet.isSupportedChain && (
-        <div className="note row" style={{ marginTop: "0.9rem", justifyContent: "space-between" }}>
+        <div className="banner banner-warn between">
           <span>
             Your wallet is on an unsupported network
             {wallet.chainId ? ` (chain ${wallet.chainId})` : ""}. Betting and claiming need
@@ -113,7 +119,11 @@ export function Header({
           </span>
           <span className="row">
             {SUPPORTED_CHAINS.map((chain) => (
-              <button key={chain.id} onClick={() => void wallet.requestChain(chain.id)}>
+              <button
+                key={chain.id}
+                className="btn btn-sm"
+                onClick={() => void wallet.requestChain(chain.id)}
+              >
                 Switch to {chain.name}
               </button>
             ))}
@@ -122,17 +132,13 @@ export function Header({
       )}
 
       {!wallet.hasWallet && (
-        <p className="note" style={{ marginTop: "0.9rem" }}>
+        <p className="banner banner-info">
           No injected wallet detected. You can still browse every market — betting and
           claiming need MetaMask or another EIP-1193 wallet.
         </p>
       )}
 
-      {wallet.error && (
-        <p className="error" style={{ marginTop: "0.9rem" }}>
-          {wallet.error}
-        </p>
-      )}
+      {wallet.error && <p className="banner banner-error">{wallet.error}</p>}
     </header>
   );
 }

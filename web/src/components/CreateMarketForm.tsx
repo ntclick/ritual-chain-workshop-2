@@ -1,10 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { useTx } from "@/hooks/useTx";
 import type { useWallet } from "@/hooks/useWallet";
-import { COMPARATOR, DEMO_MARKET, LIMITS, type ComparatorKey } from "@/lib/presets";
+import {
+  BLANK_TEMPLATE,
+  COMPARATOR,
+  LIMITS,
+  MARKET_TEMPLATES,
+  type ComparatorKey,
+  type MarketTemplate,
+} from "@/lib/presets";
 import { predictAbi } from "@/lib/predict-abi";
 
 export function CreateMarketForm({
@@ -17,34 +24,55 @@ export function CreateMarketForm({
   onCreated: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [question, setQuestion] = useState<string>(DEMO_MARKET.question);
-  const [oracleUrl, setOracleUrl] = useState<string>(DEMO_MARKET.oracleUrl);
-  const [jsonPath, setJsonPath] = useState<string>(DEMO_MARKET.jsonPath);
-  const [target, setTarget] = useState<string>(DEMO_MARKET.target.toString());
-  const [comparator, setComparator] = useState<ComparatorKey>(DEMO_MARKET.comparator);
-  const [bettingSeconds, setBettingSeconds] = useState<string>(DEMO_MARKET.bettingSeconds.toString());
-  const [resolveDelaySeconds, setResolveDelay] = useState<string>(
-    DEMO_MARKET.resolveDelaySeconds.toString(),
-  );
+  const [templateId, setTemplateId] = useState(MARKET_TEMPLATES[0]!.id);
+  const [form, setForm] = useState(() => toForm(MARKET_TEMPLATES[0]!));
   const tx = useTx();
+
+  const templates = useMemo(() => [...MARKET_TEMPLATES, BLANK_TEMPLATE], []);
+  const active = templates.find((t) => t.id === templateId) ?? BLANK_TEMPLATE;
+
+  function toForm(template: MarketTemplate) {
+    return {
+      question: template.question,
+      oracleUrl: template.oracleUrl,
+      jsonPath: template.jsonPath,
+      target: template.id === "custom" ? "" : template.target.toString(),
+      comparator: template.comparator,
+      bettingSeconds: template.bettingSeconds.toString(),
+      resolveDelaySeconds: template.resolveDelaySeconds.toString(),
+    };
+  }
+
+  function pick(template: MarketTemplate) {
+    setTemplateId(template.id);
+    setForm(toForm(template));
+    tx.reset();
+  }
+
+  const set = <K extends keyof ReturnType<typeof toForm>>(
+    key: K,
+    value: ReturnType<typeof toForm>[K],
+  ) => setForm((prev) => ({ ...prev, [key]: value }));
 
   /**
    * The same checks the contract makes, run before the wallet prompt so a mistake costs
    * nothing. The localhost check is the one that actually bites: the oracle URL is
    * fetched by a TEE executor in the cloud, so a loopback address can never resolve.
    */
-  function validate(): string | undefined {
-    if (!question.trim() || !oracleUrl.trim() || !jsonPath.trim()) {
-      return "Question, oracle URL and json path are all required.";
+  const problem = useMemo((): string | undefined => {
+    if (!form.question.trim() || !form.oracleUrl.trim() || !form.jsonPath.trim()) {
+      return "Question, oracle URL and jq filter are all required.";
     }
-    if (!/^https?:\/\//.test(oracleUrl)) return "The oracle URL must start with http:// or https://.";
+    if (!/^https?:\/\//.test(form.oracleUrl)) {
+      return "The oracle URL must start with http:// or https://.";
+    }
 
     let betting: bigint;
     let delay: bigint;
     try {
-      betting = BigInt(bettingSeconds);
-      delay = BigInt(resolveDelaySeconds);
-      BigInt(target);
+      betting = BigInt(form.bettingSeconds);
+      delay = BigInt(form.resolveDelaySeconds);
+      if (BigInt(form.target) < 0n) return "The target cannot be negative — it is a uint256.";
     } catch {
       return "Target and durations must be whole numbers.";
     }
@@ -59,10 +87,9 @@ export function CreateMarketForm({
       return "Betting plus resolve delay cannot exceed 24 hours.";
     }
     return undefined;
-  }
+  }, [form]);
 
-  const localhostOracle = /localhost|127\.0\.0\.1/.test(oracleUrl);
-  const problem = validate();
+  const localhostOracle = /localhost|127\.0\.0\.1/.test(form.oracleUrl);
 
   async function submit() {
     const hash = await tx.run(
@@ -74,13 +101,13 @@ export function CreateMarketForm({
           functionName: "createMarket",
           args: [
             {
-              question: question.trim(),
-              oracleUrl: oracleUrl.trim(),
-              jsonPath: jsonPath.trim(),
-              target: BigInt(target),
-              comparator: COMPARATOR[comparator],
-              bettingSeconds: BigInt(bettingSeconds),
-              resolveDelaySeconds: BigInt(resolveDelaySeconds),
+              question: form.question.trim(),
+              oracleUrl: form.oracleUrl.trim(),
+              jsonPath: form.jsonPath.trim(),
+              target: BigInt(form.target),
+              comparator: COMPARATOR[form.comparator],
+              bettingSeconds: BigInt(form.bettingSeconds),
+              resolveDelaySeconds: BigInt(form.resolveDelaySeconds),
             },
           ],
           chain: wallet.chain,
@@ -97,47 +124,89 @@ export function CreateMarketForm({
 
   if (!open) {
     return (
-      <button className="primary" onClick={() => setOpen(true)} style={{ width: "100%" }}>
-        Create a market
+      <button className="btn btn-primary btn-block" onClick={() => setOpen(true)}>
+        <span aria-hidden>+</span> Create a market
       </button>
     );
   }
 
+  const groups = [...new Set(templates.map((t) => t.group))];
+
   return (
-    <section className="panel grid" style={{ gap: "0.8rem" }}>
-      <div className="between">
-        <strong>New market</strong>
-        <button onClick={() => setOpen(false)}>Close</button>
+    <section className="card create">
+      <div className="card-head">
+        <div>
+          <h2 className="card-title">New market</h2>
+          <p className="card-sub">
+            Pick a template or write your own. The rule is fixed at creation — there is no
+            setter.
+          </p>
+        </div>
+        <button className="btn btn-ghost" onClick={() => setOpen(false)}>
+          Close
+        </button>
       </div>
 
-      <label className="grid" style={{ gap: "0.3rem" }}>
-        <span className="muted" style={{ fontSize: "0.82rem" }}>
-          Question
-        </span>
-        <input value={question} onChange={(event) => setQuestion(event.target.value)} />
-      </label>
+      <div className="templates">
+        {groups.map((group) => (
+          <div key={group} className="template-group">
+            <span className="template-group-label">{group}</span>
+            <div className="chips">
+              {templates
+                .filter((t) => t.group === group)
+                .map((template) => (
+                  <button
+                    key={template.id}
+                    className="chip"
+                    aria-pressed={template.id === templateId}
+                    onClick={() => pick(template)}
+                  >
+                    {template.label}
+                  </button>
+                ))}
+            </div>
+          </div>
+        ))}
+      </div>
 
-      <label className="grid" style={{ gap: "0.3rem" }}>
-        <span className="muted" style={{ fontSize: "0.82rem" }}>
-          Oracle URL — fetched by a TEE executor, so it must be publicly reachable
-        </span>
-        <input value={oracleUrl} onChange={(event) => setOracleUrl(event.target.value)} />
-      </label>
+      <p className="hint">
+        <strong>jq</strong> · {active.note}
+      </p>
 
-      <div className="row" style={{ gap: "0.6rem", alignItems: "flex-end" }}>
-        <label className="grid" style={{ gap: "0.3rem", flex: "1 1 8rem" }}>
-          <span className="muted" style={{ fontSize: "0.82rem" }}>
-            jq filter
-          </span>
-          <input value={jsonPath} onChange={(event) => setJsonPath(event.target.value)} />
+      <div className="fields">
+        <label className="field field-wide">
+          <span>Question</span>
+          <input
+            value={form.question}
+            placeholder="Will …?"
+            onChange={(event) => set("question", event.target.value)}
+          />
         </label>
-        <label className="grid" style={{ gap: "0.3rem", flex: "0 0 6rem" }}>
-          <span className="muted" style={{ fontSize: "0.82rem" }}>
-            Comparator
-          </span>
+
+        <label className="field field-wide">
+          <span>Oracle URL — fetched by a TEE executor, so it must be publicly reachable</span>
+          <input
+            value={form.oracleUrl}
+            placeholder="https://…"
+            onChange={(event) => set("oracleUrl", event.target.value)}
+          />
+        </label>
+
+        <label className="field">
+          <span>jq filter</span>
+          <input
+            className="mono"
+            value={form.jsonPath}
+            placeholder=".price"
+            onChange={(event) => set("jsonPath", event.target.value)}
+          />
+        </label>
+
+        <label className="field field-narrow">
+          <span>Comparator</span>
           <select
-            value={comparator}
-            onChange={(event) => setComparator(event.target.value as ComparatorKey)}
+            value={form.comparator}
+            onChange={(event) => set("comparator", event.target.value as ComparatorKey)}
           >
             <option value="gt">&gt;</option>
             <option value="gte">≥</option>
@@ -145,60 +214,69 @@ export function CreateMarketForm({
             <option value="lte">≤</option>
           </select>
         </label>
-        <label className="grid" style={{ gap: "0.3rem", flex: "1 1 7rem" }}>
-          <span className="muted" style={{ fontSize: "0.82rem" }}>
-            Target
-          </span>
-          <input inputMode="numeric" value={target} onChange={(event) => setTarget(event.target.value)} />
+
+        <label className="field">
+          <span>Target</span>
+          <input
+            className="mono"
+            inputMode="numeric"
+            value={form.target}
+            placeholder="4000"
+            onChange={(event) => set("target", event.target.value)}
+          />
+        </label>
+
+        <label className="field">
+          <span>Betting window (seconds)</span>
+          <input
+            className="mono"
+            inputMode="numeric"
+            value={form.bettingSeconds}
+            onChange={(event) => set("bettingSeconds", event.target.value)}
+          />
+        </label>
+
+        <label className="field">
+          <span>Then resolve after (seconds)</span>
+          <input
+            className="mono"
+            inputMode="numeric"
+            value={form.resolveDelaySeconds}
+            onChange={(event) => set("resolveDelaySeconds", event.target.value)}
+          />
         </label>
       </div>
 
-      <div className="row" style={{ gap: "0.6rem" }}>
-        <label className="grid" style={{ gap: "0.3rem", flex: 1 }}>
-          <span className="muted" style={{ fontSize: "0.82rem" }}>
-            Betting window (seconds)
-          </span>
-          <input
-            inputMode="numeric"
-            value={bettingSeconds}
-            onChange={(event) => setBettingSeconds(event.target.value)}
-          />
-        </label>
-        <label className="grid" style={{ gap: "0.3rem", flex: 1 }}>
-          <span className="muted" style={{ fontSize: "0.82rem" }}>
-            Then resolve after (seconds)
-          </span>
-          <input
-            inputMode="numeric"
-            value={resolveDelaySeconds}
-            onChange={(event) => setResolveDelay(event.target.value)}
-          />
-        </label>
-      </div>
-
-      {localhostOracle && (
-        <p className="note">
-          A loopback URL will never resolve: the HTTP precompile runs inside a TEE in the
-          cloud, not in your browser. Expose it first, e.g.{" "}
-          <span className="mono">cloudflared tunnel --url http://localhost:3000</span>.
+      {form.question && form.jsonPath && (
+        <p className="preview">
+          Resolves <strong>YES</strong> when{" "}
+          <code>
+            {form.jsonPath} {["＞", "≥", "＜", "≤"][COMPARATOR[form.comparator]]}{" "}
+            {form.target || "?"}
+          </code>
         </p>
       )}
 
-      {problem && <p className="error">{problem}</p>}
-      {tx.error && <p className="error">{tx.error}</p>}
+      {localhostOracle && (
+        <p className="banner banner-warn">
+          A loopback URL will never resolve on a real chain: the HTTP precompile runs inside
+          a TEE in the cloud, not in your browser. Expose it first, e.g.{" "}
+          <code>cloudflared tunnel --url http://localhost:3000</code>. On a local Hardhat
+          node it is fine — the mock precompile answers without fetching.
+        </p>
+      )}
+
+      {problem && <p className="banner banner-error">{problem}</p>}
+      {tx.error && <p className="banner banner-error">{tx.error}</p>}
 
       <button
-        className="primary"
+        className="btn btn-primary btn-block"
         disabled={Boolean(problem) || tx.pending || !wallet.account}
         onClick={() => void submit()}
       >
         {tx.pending ? "Confirming…" : "Create market and schedule its resolution"}
       </button>
-      {!wallet.account && (
-        <p className="muted" style={{ margin: 0, fontSize: "0.82rem" }}>
-          Connect a wallet first.
-        </p>
-      )}
+      {!wallet.account && <p className="hint">Connect a wallet first.</p>}
     </section>
   );
 }

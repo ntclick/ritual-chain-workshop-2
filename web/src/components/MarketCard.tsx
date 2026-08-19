@@ -52,7 +52,6 @@ export function MarketCard({
   const yes = yesPercent(market);
   const total = pool(market);
 
-  // The caller's own stake and what it is currently worth.
   useEffect(() => {
     if (!account) {
       setPosition(undefined);
@@ -122,45 +121,52 @@ export function MarketCard({
     }
   })();
 
-  const badgeClass =
-    market.state === STATE.Resolved ? "resolved" : market.state === STATE.Invalid ? "invalid" : "open";
+  const stateClass =
+    market.state === STATE.Resolved
+      ? "badge-yes"
+      : market.state === STATE.Invalid
+        ? "badge-invalid"
+        : "badge-open";
 
   const explorer = tx.hash ? explorerTx(wallet.chainId, tx.hash) : undefined;
 
   return (
-    <article className="panel grid" style={{ gap: "0.9rem" }}>
-      <div className="between" style={{ alignItems: "flex-start" }}>
-        <div style={{ flex: "1 1 20rem" }}>
-          <div className="row" style={{ gap: "0.5rem", marginBottom: "0.4rem" }}>
-            <span className="badge mono">#{market.id.toString()}</span>
-            <span className={`badge ${badgeClass}`}>{stateName(market)}</span>
+    <article className="card market">
+      <div className="market-head">
+        <div style={{ minWidth: 0 }}>
+          <div className="row" style={{ gap: "0.4rem" }}>
+            <span className="badge badge-id">#{market.id.toString()}</span>
+            <span className={`badge ${stateClass}`}>{stateName(market)}</span>
             {isSettled(market) && market.outcome !== RESULT.Unresolved && (
-              <span className={`badge ${market.outcome === RESULT.Yes ? "resolved" : "invalid"}`}>
+              <span
+                className={`badge ${market.outcome === RESULT.Yes ? "badge-yes" : "badge-no"}`}
+              >
                 {outcomeName(market)}
               </span>
             )}
           </div>
-          <h2 style={{ margin: 0, fontSize: "1.08rem", lineHeight: 1.35 }}>{market.question}</h2>
+          <h2 className="market-question">{market.question}</h2>
         </div>
 
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: "1.15rem", fontWeight: 600 }}>{ritual(total)} RITUAL</div>
-          <div className="muted" style={{ fontSize: "0.8rem" }}>
-            total pool
-          </div>
+        <div className="pool-total">
+          <b>{ritual(total)}</b>
+          <span>RITUAL pool</span>
         </div>
       </div>
 
-      {/* Pool split doubles as the market's implied probability. */}
       <div>
-        <div className="between" style={{ fontSize: "0.85rem", marginBottom: "0.35rem" }}>
+        <div className="split-legend">
           <span style={{ color: "var(--yes)" }}>YES {yes.toFixed(1)}%</span>
           <span style={{ color: "var(--no)" }}>NO {(100 - yes).toFixed(1)}%</span>
         </div>
-        <div className="bar">
+        <div
+          className="bar"
+          role="img"
+          aria-label={`YES ${yes.toFixed(1)} percent, NO ${(100 - yes).toFixed(1)} percent`}
+        >
           <span style={{ width: `${yes}%` }} />
         </div>
-        <div className="between muted" style={{ fontSize: "0.78rem", marginTop: "0.3rem" }}>
+        <div className="split-amounts">
           <span>{ritual(market.totalYes)}</span>
           <span>{ritual(market.totalNo)}</span>
         </div>
@@ -175,14 +181,14 @@ export function MarketCard({
           <tr>
             <td>Oracle</td>
             <td className="mono break">
-              {market.oracleUrl} <span className="muted">· jq {market.jsonPath}</span>
+              {market.oracleUrl} <span className="faint">· jq {market.jsonPath}</span>
             </td>
           </tr>
           <tr>
             <td>Betting closes</td>
             <td>
               block {market.closeBlock.toString()}{" "}
-              <span className="muted">
+              <span className="faint">
                 ({blocksUntil(market.closeBlock, currentBlock, blockTimeMs)})
               </span>
             </td>
@@ -191,7 +197,7 @@ export function MarketCard({
             <td>Resolves</td>
             <td>
               block {market.resolveBlock.toString()}{" "}
-              <span className="muted">
+              <span className="faint">
                 ({blocksUntil(market.resolveBlock, currentBlock, blockTimeMs)})
               </span>
             </td>
@@ -220,12 +226,16 @@ export function MarketCard({
       </table>
 
       {position && (position.yes > 0n || position.no > 0n) && (
-        <div className="row" style={{ fontSize: "0.85rem", gap: "1rem" }}>
-          <span className="muted">Your position</span>
-          {position.yes > 0n && <span style={{ color: "var(--yes)" }}>YES {ritual(position.yes)}</span>}
-          {position.no > 0n && <span style={{ color: "var(--no)" }}>NO {ritual(position.no)}</span>}
+        <div className="position">
+          <span className="stat-label">Your position</span>
+          {position.yes > 0n && (
+            <span style={{ color: "var(--yes)" }}>YES {ritual(position.yes)}</span>
+          )}
+          {position.no > 0n && (
+            <span style={{ color: "var(--no)" }}>NO {ritual(position.no)}</span>
+          )}
           {position.settled ? (
-            <span className="muted">· already claimed</span>
+            <span className="faint">· already claimed</span>
           ) : (
             position.claimable > 0n && <span>· claimable {ritual(position.claimable)}</span>
           )}
@@ -233,64 +243,62 @@ export function MarketCard({
       )}
 
       {bettable && (
-        <div className="grid" style={{ gap: "0.6rem" }}>
-          <div className="row">
+        <div className="bet">
+          <div className="row" style={{ gap: "0.55rem", flexWrap: "nowrap" }}>
             <button
-              className="yes"
+              className="btn btn-yes"
               aria-pressed={side === true}
               onClick={() => setSide(true)}
-              style={{ flex: 1 }}
             >
               YES {stake > 0n && `· ${payoutMultiple(market, true, stake).toFixed(2)}×`}
             </button>
             <button
-              className="no"
+              className="btn btn-no"
               aria-pressed={side === false}
               onClick={() => setSide(false)}
-              style={{ flex: 1 }}
             >
               NO {stake > 0n && `· ${payoutMultiple(market, false, stake).toFixed(2)}×`}
             </button>
           </div>
-          <div className="row">
+          <div className="bet-amount">
             <input
+              className="mono"
               inputMode="decimal"
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
               aria-label="Stake in RITUAL"
-              style={{ flex: "1 1 8rem" }}
             />
             <button
-              className="primary"
+              className="btn btn-primary"
               disabled={!account || side === undefined || stake <= 0n || tx.pending}
               onClick={() => void send("bet")}
             >
               {tx.pending ? "Confirming…" : `Stake ${amount || "0"} RITUAL`}
             </button>
           </div>
-          {!account && (
-            <p className="muted" style={{ margin: 0, fontSize: "0.82rem" }}>
-              Connect a wallet to place a bet.
-            </p>
-          )}
+          {!account && <p className="hint">Connect a wallet to place a bet.</p>}
         </div>
       )}
 
       {market.state === STATE.Resolved && position && !position.settled && position.claimable > 0n && (
-        <button className="primary" disabled={tx.pending} onClick={() => void send("claimWinnings")}>
+        <button
+          className="btn btn-primary btn-block"
+          disabled={tx.pending}
+          onClick={() => void send("claimWinnings")}
+        >
           {tx.pending ? "Confirming…" : `Claim ${ritual(position.claimable)} RITUAL`}
         </button>
       )}
 
       {market.state === STATE.Invalid && position && !position.settled && position.claimable > 0n && (
-        <button disabled={tx.pending} onClick={() => void send("claimRefund")}>
+        <button className="btn btn-block" disabled={tx.pending} onClick={() => void send("claimRefund")}>
           {tx.pending ? "Confirming…" : `Refund ${ritual(position.claimable)} RITUAL`}
         </button>
       )}
 
-      {tx.error && <p className="error">{tx.error}</p>}
+      {tx.error && <p className="banner banner-error">{tx.error}</p>}
       {tx.hash && !tx.pending && !tx.error && (
-        <p className="muted" style={{ fontSize: "0.82rem", margin: 0 }}>
+        <p className="hint">
           Confirmed ·{" "}
           {explorer ? (
             <a href={explorer} target="_blank" rel="noreferrer" className="mono">
