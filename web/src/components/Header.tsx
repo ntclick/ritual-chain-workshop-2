@@ -104,6 +104,23 @@ export function Header({
         )}
       </div>
 
+      {wallet.account && !wallet.isSupportedChain && (
+        <div className="note row" style={{ marginTop: "0.9rem", justifyContent: "space-between" }}>
+          <span>
+            Your wallet is on an unsupported network
+            {wallet.chainId ? ` (chain ${wallet.chainId})` : ""}. Betting and claiming need
+            one of these.
+          </span>
+          <span className="row">
+            {SUPPORTED_CHAINS.map((chain) => (
+              <button key={chain.id} onClick={() => void wallet.requestChain(chain.id)}>
+                Switch to {chain.name}
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
+
       {!wallet.hasWallet && (
         <p className="note" style={{ marginTop: "0.9rem" }}>
           No injected wallet detected. You can still browse every market — betting and

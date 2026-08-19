@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { BaseError, ContractFunctionRevertedError } from "viem";
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  ResourceUnavailableRpcError,
+  UserRejectedRequestError,
+} from "viem";
 
 export type TxState = {
   pending: boolean;
@@ -17,6 +22,16 @@ export type TxState = {
  */
 function describe(cause: unknown): string {
   if (cause instanceof BaseError) {
+    // Wallet-level failures come back before the contract is ever reached, and their
+    // default text ("Requested resource not available") reads like a contract problem
+    // when it is really a popup waiting to be answered.
+    if (cause.walk((e) => e instanceof UserRejectedRequestError)) {
+      return "Cancelled in the wallet.";
+    }
+    if (cause.walk((e) => e instanceof ResourceUnavailableRpcError)) {
+      return "Your wallet already has a request open. Open the wallet extension, finish or dismiss it, then try again.";
+    }
+
     const reverted = cause.walk((e) => e instanceof ContractFunctionRevertedError);
     if (reverted instanceof ContractFunctionRevertedError) {
       const name = reverted.data?.errorName;
@@ -36,8 +51,6 @@ function describe(cause: unknown): string {
       if (name) return explain[name] ?? `Rejected by the contract: ${name}.`;
     }
 
-    // User rejection in the wallet is the single most common outcome; keep it quiet.
-    if (cause.shortMessage?.includes("User rejected")) return "Cancelled in the wallet.";
     return cause.shortMessage ?? cause.message;
   }
 
