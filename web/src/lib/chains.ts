@@ -44,21 +44,20 @@ export function chainById(id: number | undefined) {
 /**
  * Which chain to open on when the visitor has no stored preference.
  *
- * A deployed build must not default to a Hardhat node on 127.0.0.1 — that address means
- * "my own machine" to whoever loads the page, so every visitor would get a dead RPC.
- * `NEXT_PUBLIC_DEFAULT_CHAIN_ID` decides it; failing that, anything not served from
- * localhost is assumed to be a real deployment.
+ * The local Hardhat node, even on a deployed build. That looks wrong until you consider
+ * what the alternative buys: Ritual's testnet RPC is down, so defaulting to it points
+ * every visitor at a chain that answers nothing. Defaulting to `127.0.0.1:8545` at least
+ * works for the people this is for — anyone running the workshop stack locally can open
+ * the deployed page and drive their own node with it.
  *
- * Only ever called from an effect, never during render: the server cannot know the
- * hostname the client will see, and disagreeing about it would be a hydration mismatch.
+ * Whoever has neither still gets something: the board falls back to sample markets
+ * rather than an empty page. `NEXT_PUBLIC_DEFAULT_CHAIN_ID` overrides this per
+ * deployment.
+ *
+ * Only ever called from an effect, never during render — see the caller.
  */
 export function defaultChain() {
-  const fromEnv = chainById(Number(process.env.NEXT_PUBLIC_DEFAULT_CHAIN_ID));
-  if (fromEnv) return fromEnv;
-
-  const host = typeof window === "undefined" ? "" : window.location.hostname;
-  const isLocal = host === "localhost" || host === "127.0.0.1" || host === "";
-  return isLocal ? localChain : ritualChain;
+  return chainById(Number(process.env.NEXT_PUBLIC_DEFAULT_CHAIN_ID)) ?? localChain;
 }
 
 export function explorerTx(chainId: number | undefined, hash: string): string | undefined {
