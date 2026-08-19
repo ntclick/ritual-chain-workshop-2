@@ -82,16 +82,54 @@ takes their stake back.
 
 ## Prerequisites
 
-- Node.js 20+ and `pnpm`
-- A wallet with testnet RITUAL from <https://faucet.ritualfoundation.org>
+- Node.js 22+ and `pnpm` (Hardhat 3 requires 22; so does the `.env` loader in
+  `hardhat.config.ts`)
+- A wallet with testnet RITUAL from <https://faucet.ritualfoundation.org> — only needed
+  to deploy. Everything below runs without one.
 
 ## Setup
 
 ```bash
 cd hardhat
 pnpm install
-cp .env.example .env
+cp .env.example .env     # RITUAL_PRIVATE_KEY, only needed for --network ritual
+pnpm test
 ```
+
+---
+
+## Verifying it without the chain
+
+The testnet was unreachable while this fork was built, so the whole contract is
+exercised on a local Hardhat node instead — not as a substitute for a live run, but
+because it reaches branches a live run cannot produce on demand.
+
+```bash
+cd hardhat
+pnpm test         # 33 Solidity + 47 TypeScript tests
+pnpm coverage     # 98.93% line coverage on RitualPredict.sol
+pnpm typecheck
+```
+
+`RitualPredict` hardcodes the canonical Ritual addresses, and none of them hold code on
+a local node — the constructor alone reverts. So the suites deploy the doubles in
+`contracts/mocks/RitualMocks.sol` and put their runtime code at those exact addresses
+(`vm.etch` in Solidity, `hardhat_setCode` in TypeScript). **The contract under test is
+never modified**: it still calls `0x0801`, `0x0803`, the Scheduler and the RitualWallet
+and cannot tell the difference. See [hardhat/README.md](hardhat/README.md) for the
+details.
+
+What that buys, beyond the happy path:
+
+| Behaviour | Why a live testnet is a poor place to check it |
+|---|---|
+| A failed read is never a NO — all 7 failure modes | You cannot ask a real oracle for a 500, an executor error, and an unsettled envelope on demand |
+| 3 failures → `Invalid` → everyone refunds | Needs three consecutive failures, ~600 blocks apart |
+| Recovery when a later attempt succeeds | Needs a failure followed by a success, on cue |
+| A jq filter that matches nothing | jq answers "successfully" with empty output, so this fails silently and is easy to miss |
+| The `0` placeholder in calldata bytes 4-35 | The Scheduler double overwrites it exactly as the real one does, making the convention a tested property rather than a comment |
+| Payout arithmetic, including sub-wei dust | Fuzzed over 512 runs; the dust left behind is asserted exactly |
+| An execution still in flight when `cancel()` lands | A real race, reproducible here on demand |
 
 ---
 
