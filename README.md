@@ -100,7 +100,73 @@ pnpm test
 
 ## What this fork adds
 
-Two changes to the contract itself, both about failures the original has no answer for.
+Everything below sits on top of `cozfuttu/ritual-chain-workshop-2@6e93b08`, in five pieces.
+
+| | |
+|---|---|
+| **The contract runs** | The five stubbed functions are implemented |
+| **The starter's own workflow works** | `.env` was never read; `hardhat test` failed on a dead test |
+| **It is tested** | 94 tests, 98.32% line coverage, no testnet needed |
+| **The contract is extended** | A stuck market can be freed; scheduled executions no longer book a zero tip |
+| **There is a frontend** | Landing page and market board, plus the scripts to drive them locally |
+
+### 1. The contract was not actually written
+
+The announcement said *"the contract is already written, so this isn't fill-in-the-blanks."*
+It is not: `RitualPredict.sol` at upstream `6e93b08` has five function bodies replaced by
+`// we'll fill this up` — `createMarket`, `onScheduledResolve`, `_readOracle`,
+`_pickExecutor` and `_scheduleResolution`. Between them they are the whole product:
+nothing can be created, nothing resolves, no oracle is ever read.
+
+They are implemented here against the behaviour the README documents — the 13-field HTTP
+request, the `0` calldata placeholder the Scheduler overwrites, the per-attempt executor
+re-roll, and the rule that a failed read is a failure and never a NO.
+
+### 2. Three config bugs that broke the documented setup
+
+- `.env.example` defines `RITUAL_PRIVATE_KEY`; `hardhat.config.ts` asked for
+  `DEPLOYER_PRIVATE_KEY`. Following the README left the deployer unset.
+- `.env.example` claims the file is *"loaded automatically by hardhat.config.ts"*. It was
+  not: Hardhat 3 reads only `process.env` and the project has no dotenv dependency, so
+  `.env` was never read at all. Fixed with Node 22's built-in loader, no new package.
+- `RITUAL_RPC_URL` was documented as an override but the URL was hardcoded.
+- `test/Counter.ts` tested a `Counter` contract that does not exist in this repo, so
+  `npx hardhat test` failed on a clean checkout.
+
+### 3. A test suite that needs no chain
+
+`RitualPredict` hardcodes the canonical Ritual addresses, and none of them hold code on a
+local node — the constructor alone reverts. `contracts/mocks/RitualMocks.sol` provides
+doubles for the Scheduler, RitualWallet, TEEServiceRegistry and the `0x0801` / `0x0803`
+precompiles, and both suites copy their runtime code onto those exact addresses
+(`vm.etch` in Solidity, `hardhat_setCode` in TypeScript). **The contract under test is
+never modified.**
+
+The precompile doubles answer from `fallback()` and return raw bytes with assembly. A
+named Solidity function would have ABI-encoded the return value a second time and the
+consumer would decode garbage — the single most common way a precompile mock goes wrong.
+
+The Scheduler double reproduces the one behaviour the contract depends on: it overwrites
+calldata bytes 4-35 with the real execution index, which makes the `0` placeholder
+convention a tested property rather than a comment.
+
+### 4. Two contract extensions
+
+Both are about failures the original has no answer for, and both are written up in full
+further down: `expireStuck` frees a market whose scheduled executions never arrived and
+whose stakes are otherwise unreachable, and scheduled executions no longer book a
+priority fee of zero on a chain that drops such transactions silently. A swallowed
+`cancel()` failure now emits `ScheduleCancelFailed` instead of leaking prepaid fees with
+nothing on chain to explain it.
+
+### 5. A frontend, and the scripts to drive it
+
+`web/` is described under [The frontend](#the-frontend). Alongside it,
+`scripts/local-demo.ts`, `local-bet.ts`, `local-resolve.ts` and `local-claim.ts` take a
+market from creation through betting, settlement and payout on a local node — including
+the retry-to-`Invalid` path — so the whole lifecycle can be shown without a testnet.
+
+---
 
 ### A market the Scheduler never wakes traps its stakes forever
 
@@ -205,11 +271,56 @@ What that buys, beyond the happy path:
 
 ---
 
+## What is proven, and what is not
+
+Ritual's testnet was unreachable throughout — its RPC accepts the connection and then
+never answers — so it is worth being exact about which claims here are backed by a run.
+
+**Run end to end on a local node**, across seven markets on one deployment:
+
+- A market resolving `YES` from a live oracle read, and winners paid
+  `stake × totalPool ÷ winningPool` — a 2 RITUAL stake into an 8 RITUAL pool with a
+  2 RITUAL winning side returned 8
+- A market failing three times and falling to `Invalid`, with every stake refunded. The
+  outcome stayed `Unresolved` through all three attempts: **a failed read was never
+  turned into a NO**
+- A market whose Scheduler callback never arrived at all, freed with `expireStuck` and
+  refunded in full — money that was otherwise unreachable by either claim path
+- A market resolving `YES` where nobody had backed YES, correctly becoming refundable
+  rather than paying out of an empty pool
+- Betting closing by itself once `closeBlock` passed, with the UI's countdown tracking
+  real block progress
+- Accounting closing exactly: 14 RITUAL staked, 14 paid out, contract balance back to 0
+- A bet placed and signed through MetaMask against the deployed contract
+
+**Not proven, and not claimed:**
+
+- **No deployment to Ritual Chain.** Nothing here has run against the real Scheduler,
+  the real TEE registry, or the real `0x0801` / `0x0803`. The precompiles are exercised
+  through doubles, which prove the contract's own logic and calling convention — not that
+  the chain answers the way its documentation says.
+- **No real oracle fetch.** The HTTP double returns a canned body regardless of the URL,
+  so the market templates' jq filters were checked against the live APIs by hand
+  (CoinGecko returns `{"ethereum":{"usd":1917.9}}`, blockchain.info returns a bare
+  integer, the repo has 54 stars) but never through a TEE.
+- **The zero-tip fix is reasoning, not measurement.** Ritual drops transactions under
+  1 gwei of priority fee silently; scheduled executions were booking a tip of `0`. Whether
+  a Scheduler-fired system transaction is subject to that mempool floor at all could not
+  be tested with the chain down.
+- **Local resolution is manual.** `local-demo.ts` mines on a timer so deadlines arrive,
+  but a local node has no Scheduler, so `local-resolve.ts` stands in for it. Only the
+  closing half of the lifecycle is autonomous here.
+
 ## Scope
 
 Intentionally not included: an AMM, an order book, an order-matching engine, governance, a separate
 ERC-20, a centralized resolver, or an upgrade proxy. Staking uses the chain's native asset and the
 betting model is plain pari-mutuel: two running totals and one mapping per side.
+
+Markets are resolved by an oracle rule fixed at creation, never by a vote or an admin. A
+human resolver would make the Scheduler, the TEE and both precompiles pointless — the
+whole exercise is settling without one. Users choose the question, the source, the filter
+and the target; nobody chooses the answer.
 
 ## Reference
 
