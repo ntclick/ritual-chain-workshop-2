@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { parseEther } from "viem";
 
+import { canTransact, NetworkGate } from "@/components/NetworkGate";
 import { useTx } from "@/hooks/useTx";
 import type { useWallet } from "@/hooks/useWallet";
 import { explorerTx } from "@/lib/chains";
@@ -300,20 +301,22 @@ export function MarketCard({
             />
             <button
               className="btn btn-primary"
-              disabled={!account || side === undefined || stake <= 0n || tx.pending}
+              disabled={
+                !canTransact(wallet) || side === undefined || stake <= 0n || tx.pending
+              }
               onClick={() => void send("bet")}
             >
               {tx.pending ? "Confirming…" : `Stake ${amount || "0"} RITUAL`}
             </button>
           </div>
-          {!account && <p className="hint">Connect a wallet to place a bet.</p>}
+          <NetworkGate wallet={wallet} />
         </div>
       )}
 
       {market.state === STATE.Resolved && position && !position.settled && position.claimable > 0n && (
         <button
           className="btn btn-primary btn-block"
-          disabled={tx.pending}
+          disabled={tx.pending || !canTransact(wallet)}
           onClick={() => void send("claimWinnings")}
         >
           {tx.pending ? "Confirming…" : `Claim ${ritual(position.claimable)} RITUAL`}
@@ -321,7 +324,11 @@ export function MarketCard({
       )}
 
       {market.state === STATE.Invalid && position && !position.settled && position.claimable > 0n && (
-        <button className="btn btn-block" disabled={tx.pending} onClick={() => void send("claimRefund")}>
+        <button
+          className="btn btn-block"
+          disabled={tx.pending || !canTransact(wallet)}
+          onClick={() => void send("claimRefund")}
+        >
           {tx.pending ? "Confirming…" : `Refund ${ritual(position.claimable)} RITUAL`}
         </button>
       )}
@@ -339,7 +346,7 @@ export function MarketCard({
               </span>
               <button
                 className="btn"
-                disabled={!account || tx.pending}
+                disabled={!canTransact(wallet) || tx.pending}
                 onClick={() => void send("expireStuck")}
               >
                 {tx.pending ? "Confirming…" : "Expire market and open refunds"}

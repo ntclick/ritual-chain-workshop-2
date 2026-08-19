@@ -46,8 +46,26 @@ export type MarketTemplate = {
   note: string;
 };
 
-const DEMO_ORACLE =
-  process.env.NEXT_PUBLIC_DEMO_ORACLE_URL ?? "http://localhost:3000/api/oracle/eth";
+/**
+ * Where this app serves its own demo oracle.
+ *
+ * Derived from the origin the page is actually loaded from rather than a hardcoded
+ * port — Next.js moves to 3001 whenever 3000 is taken, and a preset pointing at the
+ * wrong port produces a market that can never resolve. The literal is only the
+ * server-render fallback; `NEXT_PUBLIC_DEMO_ORACLE_URL` still wins when set, which is
+ * how you point at a tunnel.
+ */
+export function demoOracleUrl(): string {
+  if (process.env.NEXT_PUBLIC_DEMO_ORACLE_URL) {
+    return process.env.NEXT_PUBLIC_DEMO_ORACLE_URL;
+  }
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/api/oracle/eth`;
+  }
+  return "http://localhost:3000/api/oracle/eth";
+}
+
+const DEMO_ORACLE = demoOracleUrl();
 
 /**
  * Every template resolves to a **non-negative integer**, because the jq precompile is

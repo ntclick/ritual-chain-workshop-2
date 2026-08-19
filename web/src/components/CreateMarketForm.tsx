@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { canTransact, NetworkGate } from "@/components/NetworkGate";
 import { useTx } from "@/hooks/useTx";
 import type { useWallet } from "@/hooks/useWallet";
 import {
@@ -90,6 +91,9 @@ export function CreateMarketForm({
   }, [form]);
 
   const localhostOracle = /localhost|127\.0\.0\.1/.test(form.oracleUrl);
+  // Next.js falls back to 3001 when 3000 is taken, so name the port actually in use.
+  const origin =
+    typeof window === "undefined" ? "http://localhost:3000" : window.location.origin;
 
   async function submit() {
     const hash = await tx.run(
@@ -261,7 +265,7 @@ export function CreateMarketForm({
         <p className="banner banner-warn">
           A loopback URL will never resolve on a real chain: the HTTP precompile runs inside
           a TEE in the cloud, not in your browser. Expose it first, e.g.{" "}
-          <code>cloudflared tunnel --url http://localhost:3000</code>. On a local Hardhat
+          <code>cloudflared tunnel --url {origin}</code>. On a local Hardhat
           node it is fine — the mock precompile answers without fetching.
         </p>
       )}
@@ -271,12 +275,12 @@ export function CreateMarketForm({
 
       <button
         className="btn btn-primary btn-block"
-        disabled={Boolean(problem) || tx.pending || !wallet.account}
+        disabled={Boolean(problem) || tx.pending || !canTransact(wallet)}
         onClick={() => void submit()}
       >
         {tx.pending ? "Confirming…" : "Create market and schedule its resolution"}
       </button>
-      {!wallet.account && <p className="hint">Connect a wallet first.</p>}
+      <NetworkGate wallet={wallet} />
     </section>
   );
 }
