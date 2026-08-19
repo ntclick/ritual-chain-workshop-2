@@ -9,6 +9,9 @@ import type { useWallet } from "./useWallet";
 
 const STORAGE_KEY = "ritual-predict:address";
 
+/** No new block for this long and the clock estimates stop meaning anything. */
+const IDLE_AFTER_MS = 20_000;
+
 /**
  * The deployed market contract.
  *
@@ -40,6 +43,14 @@ export function usePredictAddress() {
 export type PredictData = {
   markets: Market[];
   currentBlock: bigint;
+  /**
+   * Wall clock when this block number was *first* seen — not when it was last polled.
+   * Anchoring to the poll instead makes a countdown saw-tooth: every read resets the
+   * elapsed time and the remaining figure jumps back up.
+   */
+  observedAt: number;
+  /** The chain has not produced a block for a while — countdowns are fiction. */
+  chainIdle: boolean;
   blockTimeMs: bigint;
   executionBalance: bigint;
   maxAttempts: number;
@@ -69,6 +80,8 @@ export function usePredict(
   // user switched networks can still resolve afterwards, and without this it would
   // write another chain's markets into the view it no longer belongs to.
   const requestKey = useRef("");
+  // Last time the block number actually moved, used to spot a stalled chain.
+  const lastBlock = useRef<{ number: bigint; at: number }>({ number: -1n, at: 0 });
 
   const refresh = useCallback(async () => {
     if (!address) {
@@ -97,9 +110,16 @@ export function usePredict(
         ]);
 
       if (requestKey.current !== key) return; // superseded by a network switch
+      const seenAt = Date.now();
+      if (currentBlock !== lastBlock.current.number) {
+        lastBlock.current = { number: currentBlock, at: seenAt };
+      }
+
       setData({
         markets: markets as unknown as Market[],
         currentBlock,
+        observedAt: lastBlock.current.at,
+        chainIdle: seenAt - lastBlock.current.at > IDLE_AFTER_MS,
         blockTimeMs: blockTimeMs as bigint,
         executionBalance: executionBalance as bigint,
         maxAttempts: Number(maxAttempts),

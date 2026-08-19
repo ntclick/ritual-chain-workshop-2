@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import { parseEther } from "viem";
 
+import { Countdown } from "@/components/Countdown";
 import { canTransact, NetworkGate } from "@/components/NetworkGate";
 import { useTx } from "@/hooks/useTx";
 import type { useWallet } from "@/hooks/useWallet";
 import { explorerTx } from "@/lib/chains";
 import {
-  blocksUntil,
+
   isBettable,
   isSettled,
   outcomeName,
@@ -33,6 +34,7 @@ export function MarketCard({
   address,
   currentBlock,
   blockTimeMs,
+  observedAt,
   maxAttempts,
   onChanged,
 }: {
@@ -41,6 +43,7 @@ export function MarketCard({
   address: `0x${string}`;
   currentBlock: bigint;
   blockTimeMs: bigint;
+  observedAt: number;
   maxAttempts: number;
   onChanged: () => void;
 }) {
@@ -316,18 +319,24 @@ export function MarketCard({
               <td>Closes</td>
               <td>
                 block {market.closeBlock.toString()}{" "}
-                <span className="faint">
-                  ({blocksUntil(market.closeBlock, currentBlock, blockTimeMs)})
-                </span>
+                <Countdown
+                  target={market.closeBlock}
+                  currentBlock={currentBlock}
+                  blockTimeMs={blockTimeMs}
+                  observedAt={observedAt}
+                />
               </td>
             </tr>
             <tr>
               <td>Resolves</td>
               <td>
                 block {market.resolveBlock.toString()}{" "}
-                <span className="faint">
-                  ({blocksUntil(market.resolveBlock, currentBlock, blockTimeMs)})
-                </span>
+                <Countdown
+                  target={market.resolveBlock}
+                  currentBlock={currentBlock}
+                  blockTimeMs={blockTimeMs}
+                  observedAt={observedAt}
+                />
               </td>
             </tr>
             {market.attempts > 0 && (
@@ -372,13 +381,19 @@ export function MarketCard({
         <span>
           {ritual(market.totalYes)} yes · {ritual(market.totalNo)} no
         </span>
-        <span>
-          {settled
-            ? "settled"
-            : bettable
-              ? `closes ${blocksUntil(market.closeBlock, currentBlock, blockTimeMs)}`
-              : `resolves ${blocksUntil(market.resolveBlock, currentBlock, blockTimeMs)}`}
-        </span>
+        {settled ? (
+          <span>settled</span>
+        ) : (
+          <span className="foot-clock">
+            {bettable ? "closes" : "resolves"}{" "}
+            <Countdown
+              target={bettable ? market.closeBlock : market.resolveBlock}
+              currentBlock={currentBlock}
+              blockTimeMs={blockTimeMs}
+              observedAt={observedAt}
+            />
+          </span>
+        )}
       </div>
     </article>
   );

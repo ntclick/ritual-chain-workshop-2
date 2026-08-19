@@ -85,3 +85,40 @@ export function blocksUntil(target: bigint, current: bigint, blockTimeMs: bigint
 export function shortAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
+
+/**
+ * Milliseconds until `target`, interpolated between polls.
+ *
+ * `blocksUntil` only moves when a poll brings a new block number, so a countdown built
+ * on it alone sits frozen between reads — and on a local node, where blocks are only
+ * mined when a transaction arrives, it never moves at all. `elapsedMs` is the wall
+ * clock since the block number was observed, which is what makes the display tick.
+ */
+export function msUntil(
+  target: bigint,
+  current: bigint,
+  blockTimeMs: bigint,
+  elapsedMs = 0,
+): number {
+  if (target <= current) return 0;
+  const byBlocks = Number((target - current) * blockTimeMs);
+  return Math.max(0, byBlocks - elapsedMs);
+}
+
+/** `2m 14s`, `1h 03m`, `12s`. Short enough to sit inside a card footer. */
+export function formatDuration(ms: number): string {
+  if (ms <= 0) return "now";
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, "0")}s`;
+  return `${s}s`;
+}
+
+/** How many blocks are still to come, as a plain number for display. */
+export function blocksRemaining(target: bigint, current: bigint): number {
+  return target <= current ? 0 : Number(target - current);
+}

@@ -84,6 +84,11 @@ npx hardhat run scripts/local-demo.ts --network localhost   # terminal 2`}</pre>
                   )}
                 </span>
               </div>
+              {data.chainIdle && (
+                <span className="idle-note" title="No new block seen for a while, so the time estimates below are extrapolated, not observed">
+                  chain idle — times are estimates
+                </span>
+              )}
               <button
                 className="btn btn-sm btn-ghost"
                 style={{ marginLeft: "auto" }}
@@ -142,6 +147,7 @@ npx hardhat run scripts/local-demo.ts --network localhost   # terminal 2`}</pre>
                 address={address}
                 currentBlock={data!.currentBlock}
                 blockTimeMs={data!.blockTimeMs}
+                observedAt={data!.observedAt}
                 maxAttempts={data!.maxAttempts}
                 onChanged={refresh}
               />

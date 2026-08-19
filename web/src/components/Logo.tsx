@@ -1,41 +1,80 @@
 /**
- * A geometric mark in the spirit of the endless knot Ritual uses — an interlaced
- * lattice on a 45° diamond, drawn from square-capped strokes.
+ * The endless knot.
  *
- * Deliberately an interpretation rather than a copy of their brand asset: this is a
- * workshop fork, and shipping someone else's logo verbatim is not mine to do.
+ * Drawn as two square-wave bands crossing at 90° on a 45° diamond, each stroked twice:
+ * a wide casing in the page background first, then the white band on top. That casing
+ * is what makes one band appear to pass under the other — the standard way knotwork is
+ * rendered in vector, and the reason this reads as woven rather than as a flat grid.
+ *
+ * To use Ritual's official artwork instead, put the file at `web/public/ritual-logo.svg`
+ * and swap the body of this component for:
+ *
+ *   <img src="/ritual-logo.svg" alt="Ritual Predict" className={...} />
+ *
+ * Done deliberately as a one-line manual swap rather than an automatic fallback: a CSS
+ * mask that fails to load is treated as no mask at all, which paints a solid block over
+ * the mark, and an <img> probe would log a 404 on every page load when the file is
+ * absent. Neither is worth it for an asset that changes once.
  */
 export function Logo({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 100 100"
-      className={className}
-      role="img"
-      aria-label="Ritual Predict"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <g
-        transform="rotate(45 50 50)"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="6"
-        strokeLinecap="square"
-      >
-        {/* outer frame, broken at the four midpoints so the weave can pass through */}
-        <path d="M22 34 V22 H34" />
-        <path d="M66 22 H78 V34" />
-        <path d="M78 66 V78 H66" />
-        <path d="M34 78 H22 V66" />
+    <span className={`logo ${className ?? ""}`.trim()} aria-label="Ritual Predict" role="img">
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g transform="rotate(45 50 50)" fill="none" strokeLinecap="square">
+          {/* Band A — vertical square wave */}
+          <path
+            d="M28 22 V78 M28 22 H50 V78 H72 V22"
+            stroke="var(--logo-casing, #05060a)"
+            strokeWidth="15"
+          />
+          <path
+            d="M28 22 V78 M28 22 H50 V78 H72 V22"
+            stroke="currentColor"
+            strokeWidth="8"
+          />
 
-        {/* the four interlocking hooks that read as the crossings */}
-        <path d="M22 46 H46 V22" />
-        <path d="M54 22 V46 H78" />
-        <path d="M78 54 H54 V78" />
-        <path d="M46 78 V54 H22" />
+          {/* Band B — the same wave turned 90°, drawn after so it passes over */}
+          <path
+            d="M22 28 H78 M22 28 V50 H78 V72 H22"
+            stroke="var(--logo-casing, #05060a)"
+            strokeWidth="15"
+          />
+          <path
+            d="M22 28 H78 M22 28 V50 H78 V72 H22"
+            stroke="currentColor"
+            strokeWidth="8"
+          />
 
-        {/* centre square, the knot's core */}
-        <path d="M38 38 H62 V62 H38 Z" />
-      </g>
-    </svg>
+          {/* Outer frame closing the weave into one continuous figure */}
+          <rect
+            x="22"
+            y="22"
+            width="56"
+            height="56"
+            stroke="var(--logo-casing, #05060a)"
+            strokeWidth="15"
+          />
+          <rect x="22" y="22" width="56" height="56" stroke="currentColor" strokeWidth="8" />
+        </g>
+
+        {/* The small diamonds at the top and bottom points */}
+        <rect
+          x="44"
+          y="2"
+          width="12"
+          height="12"
+          transform="rotate(45 50 8)"
+          fill="currentColor"
+        />
+        <rect
+          x="44"
+          y="86"
+          width="12"
+          height="12"
+          transform="rotate(45 50 92)"
+          fill="currentColor"
+        />
+      </svg>
+    </span>
   );
 }
