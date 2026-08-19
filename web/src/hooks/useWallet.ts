@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { chainById, defaultChain } from "@/lib/chains";
 import {
   DEFAULT_CHAIN,
+  discoverProviders,
   getProvider,
   readClient,
   switchChain,
@@ -43,9 +44,15 @@ export function useWallet() {
     setReadChainId(defaultChain().id);
   }, []);
 
+  // Wallets inject asynchronously, so this keeps asking rather than deciding once.
+  useEffect(() => {
+    const stop = discoverProviders(() => setHasWallet(Boolean(getProvider())));
+    setHasWallet(Boolean(getProvider()));
+    return stop;
+  }, []);
+
   useEffect(() => {
     const provider = getProvider();
-    setHasWallet(Boolean(provider));
     if (!provider) return;
 
     // Reconnect silently if this site is already authorised.
@@ -74,7 +81,8 @@ export function useWallet() {
       provider.removeListener?.("accountsChanged", onAccountsChanged);
       provider.removeListener?.("chainChanged", onChainChanged);
     };
-  }, []);
+    // Re-runs once a wallet announces itself, which may be after first paint.
+  }, [hasWallet]);
 
   const connect = useCallback(async () => {
     const provider = getProvider();
